@@ -7,8 +7,9 @@
     <title>AI Chatbot - ERPNext Assistant</title>
     <link rel="stylesheet" href="/assets/ai_chatbot/frontend/assets/main.css">
     <script>
-        // Make CSRF token available globally
+        // Make CSRF token and site name available globally
         window.csrf_token = "{{ frappe.session.csrf_token }}";
+        window.site_name = "{{ site_name }}";
     </script>
     <style>
         body, html {

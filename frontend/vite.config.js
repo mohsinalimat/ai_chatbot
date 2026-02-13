@@ -17,21 +17,10 @@ export default defineConfig({
   },
   server: {
     fs: {
-      allow: [path.resolve(__dirname, '..')],
+      // Allow reading common_site_config.json from sites/ (for socketio_port)
+      allow: [path.resolve(__dirname, '..'), path.resolve(__dirname, '../../../sites')],
     },
   },
-  /*
-  server: {
-    port: 8080,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        ws: true,
-      },
-    },
-  },
-  */
   build: {
     outDir: '../ai_chatbot/public/frontend',
     emptyOutDir: true,

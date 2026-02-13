@@ -114,13 +114,26 @@ class ChatAPI {
   }
 
   /**
-   * Send a message and get AI response
+   * Send a message and get AI response (non-streaming)
    */
   async sendMessage(conversationId, message, stream = false) {
     return this.request('send_message', {
       conversation_id: conversationId,
       message,
       stream,
+    })
+  }
+
+  /**
+   * Send a message with streaming enabled.
+   * The actual response tokens arrive via Socket.IO realtime events.
+   * This HTTP call returns immediately with a stream_id.
+   */
+  async sendMessageStreaming(conversationId, message) {
+    return this.request('send_message', {
+      conversation_id: conversationId,
+      message,
+      stream: true,
     })
   }
 
@@ -149,6 +162,7 @@ class ChatAPI {
   async getSettings() {
     return this.request('get_settings')
   }
+
 }
 
 export const chatAPI = new ChatAPI()

@@ -9,13 +9,13 @@
               ref="textareaRef"
               v-model="inputValue"
               @keydown="handleKeydown"
-              :disabled="disabled"
+              :disabled="disabled && !isStreaming"
               placeholder="Type your message... (Shift+Enter for new line)"
               rows="1"
               class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
               style="min-height: 52px; max-height: 200px;"
             ></textarea>
-            
+
             <!-- Character count -->
             <div
               v-if="inputValue.length > 0"
@@ -25,8 +25,20 @@
             </div>
           </div>
 
-          <!-- Send Button -->
+          <!-- Stop Button (shown during streaming) -->
           <button
+            v-if="isStreaming"
+            type="button"
+            @click="$emit('stop')"
+            class="h-[52px] px-6 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 flex items-center gap-2 font-medium"
+          >
+            <Square :size="16" />
+            Stop
+          </button>
+
+          <!-- Send Button (shown when not streaming) -->
+          <button
+            v-else
             type="submit"
             :disabled="disabled || !inputValue.trim()"
             class="h-[52px] px-6 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 font-medium"
@@ -55,13 +67,17 @@
 
 <script setup>
 import { ref, watch, nextTick } from 'vue'
-import { Send, Zap } from 'lucide-vue-next'
+import { Send, Zap, Square } from 'lucide-vue-next'
 
 const props = defineProps({
   disabled: Boolean,
+  isStreaming: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['send'])
+const emit = defineEmits(['send', 'stop'])
 
 const inputValue = ref('')
 const textareaRef = ref(null)

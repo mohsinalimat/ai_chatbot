@@ -25,7 +25,9 @@
   "enable_sales_tools",
   "enable_purchase_tools",
   "enable_finance_tools",
-  "enable_inventory_tools"
+  "enable_inventory_tools",
+  "streaming_section",
+  "enable_streaming"
  ],
  "fields": [
   {
@@ -148,6 +150,18 @@
    "fieldname": "enable_inventory_tools",
    "fieldtype": "Check",
    "label": "Enable Inventory Tools"
+  },
+  {
+   "fieldname": "streaming_section",
+   "fieldtype": "Section Break",
+   "label": "Streaming Configuration"
+  },
+  {
+   "default": "1",
+   "description": "Enable real-time token streaming for AI responses. When enabled, responses are delivered word-by-word via WebSocket instead of waiting for the full response.",
+   "fieldname": "enable_streaming",
+   "fieldtype": "Check",
+   "label": "Enable Streaming"
   }
  ],
  "index_web_pages_for_search": 1,

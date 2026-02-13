@@ -75,15 +75,14 @@ Backend tests use Frappe's test framework, colocated with DocTypes. Frontend tes
 
 See `docs/ENHANCEMENT_ROADMAP.md` for the full phase-wise plan.
 
-1. **Foundation** — core framework, data layer, multi-company/currency, security fixes
-2. **Streaming (SSE)** — real-time token-by-token response streaming
+1. **Foundation** — core framework, data layer, multi-company/currency, security fixes *(done)*
+2. **Streaming (Frappe Realtime)** — token-by-token streaming via `frappe.publish_realtime` (Socket.IO/WebSocket)
 3. **Data operations (CRUD)** — create/update/delete ERPNext records via chat
 4. **Finance tools** — budget, ratios, profitability, receivables/payables, cash flow + ECharts
 5. **HRMS & CRM** — complete HRMS tools, expanded CRM analytics
-6. **Basic RAG** — ChromaDB vector store, document chunking, context retrieval
-7. **Agentic RAG** — multi-agent orchestration, memory system, dynamic retrieval
-8. **IDP** — document extraction (LLM Vision), validation, ERPNext record creation
-9. **Predictive Analytics** — forecasting, anomaly detection (statistical first, ML later)
-10. **Automation** — alerts, scheduled reports, WhatsApp/Slack notifications
+6. **Agentic RAG** — ChromaDB vector store + multi-agent orchestration + memory system (combined)
+7. **IDP** — document extraction (LLM Vision), validation, ERPNext record creation
+8. **Predictive Analytics** — forecasting, anomaly detection (statistical first, ML later)
+9. **Automation** — alerts, scheduled reports, WhatsApp/Slack notifications
 
 Charts use Apache ECharts (npm: echarts). Backend returns `echart_option` objects, frontend renders with ECharts.

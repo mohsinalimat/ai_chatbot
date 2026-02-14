@@ -7,7 +7,7 @@ import frappe
 from frappe.query_builder import functions as fn
 from frappe.utils import add_days, flt, nowdate
 
-from ai_chatbot.core.config import get_default_company
+from ai_chatbot.core.config import get_default_company, get_fiscal_year_dates
 from ai_chatbot.data.currency import build_currency_response
 from ai_chatbot.tools.registry import register_tool
 
@@ -17,19 +17,19 @@ from ai_chatbot.tools.registry import register_tool
 	category="finance",
 	description="Get financial summary including revenue, expenses, and profit for a period",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
-		"company": {"type": "string", "description": "Company name. Defaults to user's default company."},
+		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
+		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
+		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
 	},
 )
 def get_financial_summary(from_date=None, to_date=None, company=None):
 	"""Get financial summary using base currency fields and frappe.qb."""
 	company = get_default_company(company)
 
-	if not from_date:
-		from_date = add_days(nowdate(), -30)
-	if not to_date:
-		to_date = nowdate()
+	if not from_date or not to_date:
+		fy_from, fy_to = get_fiscal_year_dates(company)
+		from_date = from_date or fy_from
+		to_date = to_date or fy_to
 
 	# Revenue from Sales Invoices (base_grand_total = company currency)
 	si = frappe.qb.DocType("Sales Invoice")
@@ -72,7 +72,7 @@ def get_financial_summary(from_date=None, to_date=None, company=None):
 	description="Analyze cash flow patterns and trends over a period",
 	parameters={
 		"months": {"type": "integer", "description": "Number of months to analyze (default 6)"},
-		"company": {"type": "string", "description": "Company name. Defaults to user's default company."},
+		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
 	},
 )
 def get_cash_flow_analysis(months=6, company=None):

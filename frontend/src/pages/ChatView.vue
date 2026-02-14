@@ -99,13 +99,13 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { marked } from 'marked'
 import Sidebar from '../components/Sidebar.vue'
 import ChatHeader from '../components/ChatHeader.vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import ChatInput from '../components/ChatInput.vue'
 import TypingIndicator from '../components/TypingIndicator.vue'
 import { chatAPI } from '../utils/api'
+import { renderMarkdown } from '../utils/markdown'
 import { useStreaming } from '../composables/useStreaming'
 import { useSocket } from '../composables/useSocket'
 
@@ -135,7 +135,7 @@ const { initSocket, isConnected } = useSocket()
 const renderedStreamingContent = computed(() => {
   if (!streamingContent.value) return ''
   try {
-    return marked(streamingContent.value)
+    return renderMarkdown(streamingContent.value)
   } catch {
     return streamingContent.value
   }

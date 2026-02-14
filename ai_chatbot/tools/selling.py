@@ -5,7 +5,7 @@ Sales and customer analytics tools for AI Chatbot
 
 from frappe.utils import flt
 
-from ai_chatbot.core.config import get_default_company
+from ai_chatbot.core.config import get_default_company, get_fiscal_year_dates
 from ai_chatbot.data.analytics import get_grouped_sum
 from ai_chatbot.data.currency import build_currency_response
 from ai_chatbot.tools.registry import register_tool
@@ -16,15 +16,20 @@ from ai_chatbot.tools.registry import register_tool
 	category="selling",
 	description="Get sales analytics including revenue, orders, and growth trends",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
+		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
 		"customer": {"type": "string", "description": "Filter by customer name"},
-		"company": {"type": "string", "description": "Company name. Defaults to user's default company."},
+		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
 	},
 )
 def get_sales_analytics(from_date=None, to_date=None, customer=None, company=None):
 	"""Get sales analytics with multi-company and base currency support."""
 	company = get_default_company(company)
+
+	if not from_date or not to_date:
+		fy_from, fy_to = get_fiscal_year_dates(company)
+		from_date = from_date or fy_from
+		to_date = to_date or fy_to
 
 	filters = {"docstatus": 1}
 	if customer:
@@ -65,17 +70,21 @@ def get_sales_analytics(from_date=None, to_date=None, customer=None, company=Non
 	description="Get top customers by revenue",
 	parameters={
 		"limit": {"type": "integer", "description": "Number of customers to return (default 10)"},
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
-		"company": {"type": "string", "description": "Company name. Defaults to user's default company."},
+		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
+		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
+		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
 	},
 )
-def get_top_customers(limit=10, from_date=None, company=None):
+def get_top_customers(limit=10, from_date=None, to_date=None, company=None):
 	"""Get top customers by revenue using the analytics data layer (no raw SQL)."""
 	company = get_default_company(company)
 
-	filters = {"docstatus": 1}
-	if from_date:
-		filters["posting_date"] = [">=", from_date]
+	if not from_date or not to_date:
+		fy_from, fy_to = get_fiscal_year_dates(company)
+		from_date = from_date or fy_from
+		to_date = to_date or fy_to
+
+	filters = {"docstatus": 1, "posting_date": ["between", [from_date, to_date]]}
 
 	customers = get_grouped_sum(
 		doctype="Sales Invoice",

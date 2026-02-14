@@ -6,7 +6,7 @@ Customer Relationship Management tools for AI Chatbot
 import frappe
 from frappe.utils import flt
 
-from ai_chatbot.core.config import get_company_currency, get_default_company
+from ai_chatbot.core.config import get_company_currency, get_default_company, get_fiscal_year_dates
 from ai_chatbot.data.currency import build_currency_response
 from ai_chatbot.tools.registry import register_tool
 
@@ -16,14 +16,19 @@ from ai_chatbot.tools.registry import register_tool
 	category="crm",
 	description="Get statistics about leads including count, status breakdown, and conversion rates",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
-		"company": {"type": "string", "description": "Company name. Defaults to user's default company."},
+		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
+		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
+		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
 	},
 )
 def get_lead_statistics(from_date=None, to_date=None, company=None):
 	"""Get lead statistics with multi-company support."""
 	company = get_default_company(company)
+
+	if not from_date or not to_date:
+		fy_from, fy_to = get_fiscal_year_dates(company)
+		from_date = from_date or fy_from
+		to_date = to_date or fy_to
 
 	filters = [["company", "=", company]]
 	if from_date:
@@ -52,7 +57,7 @@ def get_lead_statistics(from_date=None, to_date=None, company=None):
 	description="Get sales opportunity pipeline with stages and values",
 	parameters={
 		"status": {"type": "string", "description": "Filter by status (Open, Converted, Lost)"},
-		"company": {"type": "string", "description": "Company name. Defaults to user's default company."},
+		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
 	},
 )
 def get_opportunity_pipeline(status=None, company=None):

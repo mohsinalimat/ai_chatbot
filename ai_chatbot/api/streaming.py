@@ -12,6 +12,7 @@ import uuid
 
 import frappe
 
+from ai_chatbot.core.prompts import build_system_prompt
 from ai_chatbot.tools.base import BaseTool, get_all_tools_schema
 from ai_chatbot.utils.ai_providers import get_ai_provider
 
@@ -96,6 +97,11 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 
 		# Get conversation history and provider
 		history = _get_conversation_history(conversation_id)
+
+		# Prepend system prompt
+		system_prompt = build_system_prompt()
+		history = [{"role": "system", "content": system_prompt}, *history]
+
 		provider = get_ai_provider(ai_provider)
 		tools = get_all_tools_schema()
 

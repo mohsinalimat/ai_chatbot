@@ -165,5 +165,8 @@ def _ensure_tools_loaded():
 	import ai_chatbot.tools.buying
 	import ai_chatbot.tools.crm
 	import ai_chatbot.tools.hrms
+	import ai_chatbot.tools.operations.create
+	import ai_chatbot.tools.operations.search
+	import ai_chatbot.tools.operations.update
 	import ai_chatbot.tools.selling
 	import ai_chatbot.tools.stock

@@ -4,6 +4,7 @@ Reads from Chatbot Settings DocType and user defaults.
 """
 
 import frappe
+from frappe.utils import add_days, nowdate
 
 
 def get_default_company(company=None):
@@ -32,6 +33,32 @@ def get_default_company(company=None):
 	from ai_chatbot.core.exceptions import CompanyRequiredError
 
 	raise CompanyRequiredError()
+
+
+def get_fiscal_year_dates(company=None):
+	"""Get the current fiscal year start and end dates for a company.
+
+	Uses ERPNext's get_fiscal_year utility which respects company-specific
+	fiscal year configurations via the Fiscal Year Company child table.
+
+	Args:
+		company: Company name. Resolved via get_default_company if not provided.
+
+	Returns:
+		Tuple of (from_date, to_date) as strings in YYYY-MM-DD format.
+		Falls back to (today - 365 days, today) if no fiscal year is configured.
+	"""
+	company = get_default_company(company)
+
+	try:
+		from erpnext.accounts.utils import get_fiscal_year
+
+		fy = get_fiscal_year(date=nowdate(), company=company)
+		return (str(fy[1]), str(fy[2]))
+	except Exception:
+		# Fallback if no fiscal year is configured
+		today = nowdate()
+		return (str(add_days(today, -365)), today)
 
 
 def get_company_currency(company):

@@ -7,6 +7,7 @@ import json
 
 import frappe
 
+from ai_chatbot.core.prompts import build_system_prompt
 from ai_chatbot.tools.base import BaseTool, get_all_tools_schema
 from ai_chatbot.utils.ai_providers import get_ai_provider
 
@@ -124,6 +125,10 @@ def send_message(conversation_id: str, message: str, stream: bool = False) -> di
 
 		# Get conversation history
 		history = get_conversation_history(conversation_id)
+
+		# Prepend system prompt
+		system_prompt = build_system_prompt()
+		history = [{"role": "system", "content": system_prompt}, *history]
 
 		# Get AI provider
 		provider = get_ai_provider(conversation.ai_provider)
@@ -321,6 +326,7 @@ def get_settings() -> dict:
 					"purchase": settings.enable_purchase_tools,
 					"finance": settings.enable_finance_tools,
 					"inventory": settings.enable_inventory_tools,
+					"operations": getattr(settings, "enable_write_operations", 0),
 				},
 			},
 		}

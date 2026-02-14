@@ -32,8 +32,8 @@
               class="markdown-body prose prose-sm max-w-none"
             ></div>
 
-            <!-- Tool Calls Display -->
-            <div v-if="hasValidToolCalls" class="mt-4">
+            <!-- Read-Only Tool Calls Display -->
+            <div v-if="readToolCalls.length > 0" class="mt-4">
               <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <Wrench :size="16" class="text-blue-600 flex-shrink-0 mt-0.5" />
                 <div class="flex-1">
@@ -42,11 +42,32 @@
                   </div>
                   <div class="flex flex-wrap gap-2">
                     <span
-                      v-for="(tool, index) in validToolCalls"
+                      v-for="(tool, index) in readToolCalls"
                       :key="index"
                       class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium"
                     >
                       {{ getToolName(tool) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Write Operation Tool Calls Display -->
+            <div v-if="writeToolCalls.length > 0" class="mt-4">
+              <div class="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <PenSquare :size="16" class="text-amber-600 flex-shrink-0 mt-0.5" />
+                <div class="flex-1">
+                  <div class="text-sm font-medium text-amber-900 mb-1">
+                    Document Operations Performed
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <span
+                      v-for="(tool, index) in writeToolCalls"
+                      :key="index"
+                      class="inline-flex items-center px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium"
+                    >
+                      {{ getToolName(tool, true) }}
                     </span>
                   </div>
                 </div>
@@ -68,27 +89,14 @@
 
 <script setup>
 import { computed } from 'vue'
-import { marked } from 'marked'
-import hljs from 'highlight.js'
-import { Wrench } from 'lucide-vue-next'
+import { Wrench, PenSquare } from 'lucide-vue-next'
+import { renderMarkdown } from '../utils/markdown'
 
 const props = defineProps({
   message: {
     type: Object,
     required: true,
   },
-})
-
-// Configure marked for syntax highlighting
-marked.setOptions({
-  highlight: function(code, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value
-    }
-    return hljs.highlightAuto(code).value
-  },
-  breaks: true,
-  gfm: true,
 })
 
 const messageClasses = computed(() => {
@@ -111,7 +119,7 @@ const renderedContent = computed(() => {
       // This regex removes JSON-like structures that shouldn't be in the content
       content = content.replace(/\[?\s*\{\s*["']type["']:\s*["']function["']/g, '')
       
-      return marked(content)
+      return renderMarkdown(content)
     } catch (error) {
       console.error('Markdown rendering error:', error)
       return props.message.content
@@ -170,30 +178,48 @@ const validToolCalls = computed(() => {
   })
 })
 
+// Check if a tool call is a write operation (create/update/delete)
+const isWriteOperation = (tool) => {
+  const name = tool?.function?.name || tool?.name || ''
+  return /^(create_|update_|delete_)/.test(name)
+}
+
+// Split tool calls into read-only and write operations
+const readToolCalls = computed(() => {
+  return validToolCalls.value.filter(tool => !isWriteOperation(tool))
+})
+
+const writeToolCalls = computed(() => {
+  return validToolCalls.value.filter(tool => isWriteOperation(tool))
+})
+
 // Extract tool name from tool call object
-const getToolName = (tool) => {
+const getToolName = (tool, keepPrefix = false) => {
   if (!tool) return 'Unknown'
-  
+
   // OpenAI format: tool.function.name
   if (tool.function?.name) {
-    return formatToolName(tool.function.name)
+    return formatToolName(tool.function.name, keepPrefix)
   }
-  
+
   // Claude format: tool.name
   if (tool.name) {
-    return formatToolName(tool.name)
+    return formatToolName(tool.name, keepPrefix)
   }
-  
+
   return 'Unknown Tool'
 }
 
-// Format tool name for display (e.g., "search_customers" -> "Search Customers")
-const formatToolName = (name) => {
+// Format tool name for display (e.g., "get_sales_analytics" -> "Sales Analytics")
+// For write ops with keepPrefix=true: "create_lead" -> "Create Lead"
+const formatToolName = (name, keepPrefix = false) => {
   if (!name || typeof name !== 'string') return 'Unknown'
-  
-  // Remove common prefixes
-  name = name.replace(/^(get_|search_|list_|create_|update_|delete_)/, '')
-  
+
+  if (!keepPrefix) {
+    // Remove read-only prefixes
+    name = name.replace(/^(get_|search_|list_)/, '')
+  }
+
   return name
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))

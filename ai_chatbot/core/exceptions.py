@@ -53,3 +53,13 @@ class ToolNotFoundError(ChatbotError):
 	def __init__(self, tool_name):
 		self.tool_name = tool_name
 		super().__init__(f"Tool '{tool_name}' not found in the registry", error_code="TOOL_NOT_FOUND")
+
+
+class DocumentValidationError(ChatbotError):
+	"""Raised when document validation fails (missing fields, invalid links, etc.)"""
+
+	def __init__(self, doctype, errors):
+		self.doctype = doctype
+		self.errors = errors
+		msg = f"Validation failed for {doctype}: {', '.join(errors)}"
+		super().__init__(msg, error_code="DOCUMENT_VALIDATION_ERROR")

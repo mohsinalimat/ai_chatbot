@@ -170,3 +170,12 @@ def _ensure_tools_loaded():
 	import ai_chatbot.tools.operations.update
 	import ai_chatbot.tools.selling
 	import ai_chatbot.tools.stock
+
+	# Phase 4: Finance tools
+	import ai_chatbot.tools.finance.budget
+	import ai_chatbot.tools.finance.cash_flow
+	import ai_chatbot.tools.finance.payables
+	import ai_chatbot.tools.finance.profitability
+	import ai_chatbot.tools.finance.ratios
+	import ai_chatbot.tools.finance.receivables
+	import ai_chatbot.tools.finance.working_capital

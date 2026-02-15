@@ -32,6 +32,14 @@
               class="markdown-body prose prose-sm max-w-none"
             ></div>
 
+            <!-- Charts from tool results -->
+            <ChartMessage
+              v-for="(chart, idx) in chartData"
+              :key="'chart-' + idx"
+              :echart-option="chart.echart_option"
+              :raw-data="chart.data"
+            />
+
             <!-- Read-Only Tool Calls Display -->
             <div v-if="readToolCalls.length > 0" class="mt-4">
               <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -91,6 +99,7 @@
 import { computed } from 'vue'
 import { Wrench, PenSquare } from 'lucide-vue-next'
 import { renderMarkdown } from '../utils/markdown'
+import ChartMessage from './charts/ChartMessage.vue'
 
 const props = defineProps({
   message: {
@@ -126,6 +135,30 @@ const renderedContent = computed(() => {
     }
   }
   return props.message.content
+})
+
+// Extract chart data from tool_results
+const chartData = computed(() => {
+  if (!props.message.tool_results) return []
+
+  let results = props.message.tool_results
+  if (typeof results === 'string') {
+    try {
+      results = JSON.parse(results)
+    } catch {
+      return []
+    }
+  }
+
+  if (!Array.isArray(results)) results = [results]
+
+  // Extract echart_option from successful tool results
+  return results
+    .filter(r => r && r.success !== false && r.data?.echart_option)
+    .map(r => ({
+      echart_option: r.data.echart_option,
+      data: r.data,
+    }))
 })
 
 // Check if tool_calls is valid and has items

@@ -316,10 +316,14 @@ const handleChangeProvider = (provider) => {
   selectedProvider.value = provider
 }
 
-const scrollToBottom = () => {
+const scrollToBottom = (force = false) => {
   if (messagesContainer.value) {
-    // Smart scroll: only auto-scroll if user is near the bottom
     const el = messagesContainer.value
+    if (force) {
+      el.scrollTop = el.scrollHeight
+      return
+    }
+    // Smart scroll: only auto-scroll if user is near the bottom
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150
     if (isNearBottom || isStreaming.value || isLoading.value) {
       el.scrollTop = el.scrollHeight
@@ -345,6 +349,10 @@ watch(isStreaming, async (newVal, oldVal) => {
     await loadMessages(currentConversation.value.name)
     await loadConversations()
     resetStreaming()
+    // Force scroll after reload — use setTimeout to wait for charts/images to render
+    await nextTick()
+    scrollToBottom(true)
+    setTimeout(() => scrollToBottom(true), 300)
   }
 })
 

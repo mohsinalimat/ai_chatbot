@@ -15,6 +15,7 @@
   "tokens_used",
   "section_break_2",
   "tool_calls",
+  "tool_results",
   "attachments"
  ],
  "fields": [
@@ -63,6 +64,12 @@
    "fieldname": "tool_calls",
    "fieldtype": "JSON",
    "label": "Tool Calls"
+  },
+  {
+   "fieldname": "tool_results",
+   "fieldtype": "JSON",
+   "hidden": 1,
+   "label": "Tool Results"
   },
   {
    "fieldname": "attachments",

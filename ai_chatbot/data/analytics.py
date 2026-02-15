@@ -96,7 +96,7 @@ def get_time_series(doctype, value_field, date_field, filters=None, company=None
 	end_date = get_last_day(nowdate())
 
 	# Use Frappe's date formatting for month grouping
-	month_expr = fn.Date_Format(table[date_field], "%Y-%m")
+	month_expr = fn.DateFormat(table[date_field], "%Y-%m")
 
 	query = (
 		frappe.qb.from_(table)
@@ -156,20 +156,26 @@ def _apply_filters(query, table, doctype, filters):
 
 		if isinstance(value, (list, tuple)) and len(value) == 2:
 			operator, operand = value
-			op_map = {
-				">=": col.gte,
-				"<=": col.lte,
-				">": col.gt,
-				"<": col.lt,
-				"=": col.eq,
-				"!=": col.ne,
-				"like": col.like,
-				"in": col.isin,
-				"not in": col.notin,
-			}
-			op_func = op_map.get(operator.lower() if isinstance(operator, str) else operator)
-			if op_func:
-				query = query.where(op_func(operand))
+			op_str = operator.lower() if isinstance(operator, str) else operator
+
+			# Handle "between" specially: operand is [start, end]
+			if op_str == "between" and isinstance(operand, (list, tuple)) and len(operand) == 2:
+				query = query.where(col.between(operand[0], operand[1]))
+			else:
+				op_map = {
+					">=": col.gte,
+					"<=": col.lte,
+					">": col.gt,
+					"<": col.lt,
+					"=": col.eq,
+					"!=": col.ne,
+					"like": col.like,
+					"in": col.isin,
+					"not in": col.notin,
+				}
+				op_func = op_map.get(op_str)
+				if op_func:
+					query = query.where(op_func(operand))
 		else:
 			query = query.where(col == value)
 

@@ -24,7 +24,7 @@ export default defineConfig({
   build: {
     outDir: '../ai_chatbot/public/frontend',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
@@ -37,6 +37,7 @@ export default defineConfig({
           'vue-vendor': ['vue', 'vue-router'],
           'markdown': ['marked', 'highlight.js'],
           'icons': ['lucide-vue-next'],
+          'echarts': ['echarts'],
         },
       },
     },

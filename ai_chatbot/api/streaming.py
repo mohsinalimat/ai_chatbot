@@ -106,7 +106,7 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 		tools = get_all_tools_schema()
 
 		# Run the streaming loop
-		full_content, tool_calls_data, tokens_used = _stream_with_tools(
+		full_content, tool_calls_data, tool_results_data, tokens_used = _stream_with_tools(
 			ai_provider=ai_provider,
 			provider=provider,
 			history=history,
@@ -126,6 +126,7 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 				"timestamp": frappe.utils.now(),
 				"tokens_used": tokens_used,
 				"tool_calls": json.dumps(tool_calls_data) if tool_calls_data else None,
+				"tool_results": json.dumps(tool_results_data) if tool_results_data else None,
 			}
 		).insert()
 
@@ -188,10 +189,11 @@ def _stream_with_tools(
 	add results to history → stream again with tool results.
 
 	Returns:
-		tuple of (full_content, tool_calls_data, tokens_used)
+		tuple of (full_content, tool_calls_data, tool_results_data, tokens_used)
 	"""
 	full_content = ""
 	all_tool_calls = []
+	all_tool_results = []
 
 	for _round in range(max_tool_rounds):
 		round_content, round_tool_calls, _needs_followup = _stream_single_round(
@@ -260,6 +262,8 @@ def _stream_with_tools(
 			except Exception as e:
 				result = {"error": str(e)}
 
+			all_tool_results.append(result)
+
 			_publish(
 				"ai_chat_tool_result",
 				{
@@ -287,7 +291,7 @@ def _stream_with_tools(
 	# Estimate tokens (rough — we don't get exact counts from streaming)
 	tokens_used = _estimate_tokens(full_content, history)
 
-	return full_content, all_tool_calls, tokens_used
+	return full_content, all_tool_calls, all_tool_results, tokens_used
 
 
 def _stream_single_round(provider, history, tools, conversation_id, stream_id, user):

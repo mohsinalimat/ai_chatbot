@@ -68,11 +68,11 @@ def get_conversation_messages(conversation_id: str) -> dict:
 		messages = frappe.get_all(
 			"Chatbot Message",
 			filters={"conversation": conversation_id},
-			fields=["name", "role", "content", "timestamp", "tokens_used", "tool_calls"],
+			fields=["name", "role", "content", "timestamp", "tokens_used", "tool_calls", "tool_results"],
 			order_by="timestamp asc",
 		)
 
-		# Parse tool_calls JSON strings
+		# Parse JSON string fields
 		for msg in messages:
 			if msg.get("tool_calls"):
 				try:
@@ -81,8 +81,17 @@ def get_conversation_messages(conversation_id: str) -> dict:
 						if isinstance(msg["tool_calls"], str)
 						else msg["tool_calls"]
 					)
-				except json.JSONDecodeError, TypeError:
+				except (json.JSONDecodeError, TypeError):
 					msg["tool_calls"] = None
+			if msg.get("tool_results"):
+				try:
+					msg["tool_results"] = (
+						json.loads(msg["tool_results"])
+						if isinstance(msg["tool_results"], str)
+						else msg["tool_results"]
+					)
+				except (json.JSONDecodeError, TypeError):
+					msg["tool_results"] = None
 
 		return {
 			"success": True,
@@ -176,7 +185,8 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 			tool_calls = []
 			tokens_used = response["usage"]["input_tokens"] + response["usage"]["output_tokens"]
 
-		# Handle tool calls if present
+			# Handle tool calls if present
+		all_tool_results = []
 		if tool_calls:
 			tool_results = []
 			for tool_call in tool_calls:
@@ -189,6 +199,8 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 
 				result = BaseTool.execute_tool(func_name, func_args)
 				tool_results.append(result)
+
+			all_tool_results = tool_results
 
 			# Add tool results to history and get final response
 			history.append(
@@ -229,6 +241,7 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 				"timestamp": frappe.utils.now(),
 				"tokens_used": tokens_used,
 				"tool_calls": json.dumps(tool_calls) if tool_calls else None,
+				"tool_results": json.dumps(all_tool_results) if all_tool_results else None,
 			}
 		).insert()
 

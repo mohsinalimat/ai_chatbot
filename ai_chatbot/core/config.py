@@ -7,6 +7,28 @@ import frappe
 from frappe.utils import add_days, nowdate
 
 
+def is_app_installed(app_name):
+	"""Check if a Frappe app is installed.
+
+	Args:
+		app_name: The app name (e.g. "hrms", "erpnext").
+
+	Returns:
+		bool
+	"""
+	return app_name in frappe.get_installed_apps()
+
+
+def is_hrms_installed():
+	"""Check if the HRMS app is installed."""
+	return is_app_installed("hrms")
+
+
+def is_erpnext_installed():
+	"""Check if ERPNext is installed."""
+	return is_app_installed("erpnext")
+
+
 def get_default_company(company=None):
 	"""Get the effective company — passed value, user default, or global default.
 

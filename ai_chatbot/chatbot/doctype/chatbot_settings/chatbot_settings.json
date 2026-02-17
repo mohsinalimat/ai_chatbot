@@ -26,6 +26,7 @@
   "enable_purchase_tools",
   "enable_finance_tools",
   "enable_inventory_tools",
+  "enable_hrms_tools",
   "data_operations_section",
   "enable_write_operations",
   "streaming_section",
@@ -152,6 +153,13 @@
    "fieldname": "enable_inventory_tools",
    "fieldtype": "Check",
    "label": "Enable Inventory Tools"
+  },
+  {
+   "default": "1",
+   "description": "Enable HR & Payroll analytics tools. Requires HRMS app to be installed.",
+   "fieldname": "enable_hrms_tools",
+   "fieldtype": "Check",
+   "label": "Enable HRMS Tools"
   },
   {
    "fieldname": "data_operations_section",

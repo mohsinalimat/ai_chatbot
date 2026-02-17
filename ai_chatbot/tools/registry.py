@@ -151,31 +151,45 @@ def _build_schema(tool_info):
 	}
 
 
+_tools_loaded = False
+
+
 def _ensure_tools_loaded():
 	"""Import all tool modules to trigger @register_tool decorators.
 
 	Called lazily on first access. Module imports are idempotent —
 	Python caches them after first import.
+
+	ERPNext and HRMS tool imports are conditional — they are only loaded
+	when the respective app is installed.
 	"""
-	if _TOOL_REGISTRY:
+	global _tools_loaded
+	if _tools_loaded:
 		return
+	_tools_loaded = True
 
-	# Import all tool modules — their @register_tool decorators populate _TOOL_REGISTRY
-	import ai_chatbot.tools.account
-	import ai_chatbot.tools.buying
-	import ai_chatbot.tools.crm
-	import ai_chatbot.tools.hrms
-	import ai_chatbot.tools.operations.create
-	import ai_chatbot.tools.operations.search
-	import ai_chatbot.tools.operations.update
-	import ai_chatbot.tools.selling
-	import ai_chatbot.tools.stock
+	from ai_chatbot.core.config import is_erpnext_installed, is_hrms_installed
 
-	# Phase 4: Finance tools
-	import ai_chatbot.tools.finance.budget
-	import ai_chatbot.tools.finance.cash_flow
-	import ai_chatbot.tools.finance.payables
-	import ai_chatbot.tools.finance.profitability
-	import ai_chatbot.tools.finance.ratios
-	import ai_chatbot.tools.finance.receivables
-	import ai_chatbot.tools.finance.working_capital
+	# ERPNext tools (CRM, selling, buying, finance, inventory, operations)
+	if is_erpnext_installed():
+		import ai_chatbot.tools.account
+		import ai_chatbot.tools.buying
+		import ai_chatbot.tools.crm
+		import ai_chatbot.tools.operations.create
+		import ai_chatbot.tools.operations.search
+		import ai_chatbot.tools.operations.update
+		import ai_chatbot.tools.selling
+		import ai_chatbot.tools.stock
+
+		# Phase 4: Finance tools
+		import ai_chatbot.tools.finance.budget
+		import ai_chatbot.tools.finance.cash_flow
+		import ai_chatbot.tools.finance.payables
+		import ai_chatbot.tools.finance.profitability
+		import ai_chatbot.tools.finance.ratios
+		import ai_chatbot.tools.finance.receivables
+		import ai_chatbot.tools.finance.working_capital
+
+	# Phase 5: HRMS tools (only if HRMS app is installed)
+	if is_hrms_installed():
+		import ai_chatbot.tools.hrms

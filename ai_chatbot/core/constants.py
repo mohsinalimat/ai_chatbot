@@ -25,6 +25,7 @@ TOOL_CATEGORIES = {
 	"buying": "enable_purchase_tools",
 	"finance": "enable_finance_tools",
 	"inventory": "enable_inventory_tools",
+	"hrms": "enable_hrms_tools",
 	"operations": "enable_write_operations",
 }
 

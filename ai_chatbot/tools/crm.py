@@ -111,23 +111,10 @@ def get_opportunity_pipeline(status=None, company=None):
 		fields=["name", "opportunity_amount", "currency", "status", "sales_stage", "party_name"],
 	)
 
-	# Sum with currency conversion — Opportunity doesn't have base_* fields
+	# Convert amounts to company currency and group by stage
 	total_value = 0
-	for opp in opportunities:
-		opp_currency = opp.get("currency")
-		amount = flt(opp.get("opportunity_amount", 0))
-		if opp_currency and opp_currency != currency and amount:
-			from ai_chatbot.data.currency import get_exchange_rate
-
-			rate = get_exchange_rate(opp_currency, currency)
-			total_value += amount * rate
-		else:
-			total_value += amount
-
-	# Group by sales stage for chart
 	stage_data = {}
 	for opp in opportunities:
-		stage = opp.get("sales_stage") or "Unassigned"
 		opp_currency = opp.get("currency")
 		amount = flt(opp.get("opportunity_amount", 0))
 		if opp_currency and opp_currency != currency and amount:
@@ -135,18 +122,45 @@ def get_opportunity_pipeline(status=None, company=None):
 
 			rate = get_exchange_rate(opp_currency, currency)
 			amount = amount * rate
+		total_value += amount
+
+		stage = opp.get("sales_stage") or "Unassigned"
 		stage_data[stage] = stage_data.get(stage, 0) + amount
 
+	# Build stage summary instead of returning raw records
+	stage_summary = [
+		{"stage": stage, "value": flt(val, 2), "count": sum(
+			1 for o in opportunities if (o.get("sales_stage") or "Unassigned") == stage
+		)}
+		for stage, val in stage_data.items()
+	]
+	stage_summary.sort(key=lambda s: s["value"], reverse=True)
+
+	# Top 10 opportunities by amount for context
+	top_opps = sorted(opportunities, key=lambda o: flt(o.get("opportunity_amount", 0)), reverse=True)[:10]
+	top_opportunities = [
+		{
+			"name": o.name,
+			"party_name": o.party_name,
+			"amount": flt(o.opportunity_amount, 2),
+			"currency": o.currency,
+			"status": o.status,
+			"sales_stage": o.sales_stage,
+		}
+		for o in top_opps
+	]
+
 	result = {
-		"opportunities": opportunities,
-		"total_value": total_value,
+		"stage_summary": stage_summary,
+		"top_opportunities": top_opportunities,
+		"total_value": flt(total_value, 2),
 		"count": len(opportunities),
 	}
 
 	# Add ECharts bar chart grouped by sales stage
 	if stage_data:
-		categories = list(stage_data.keys())
-		values = [flt(v, 2) for v in stage_data.values()]
+		categories = [s["stage"] for s in stage_summary]
+		values = [s["value"] for s in stage_summary]
 		result["echart_option"] = build_bar_chart(
 			title="Opportunity Pipeline by Stage",
 			categories=categories,

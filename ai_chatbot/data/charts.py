@@ -21,6 +21,7 @@ CHART_COLORS = [
 ]
 
 
+
 def _colorize_data(series_data):
 	"""Assign individual colors to each data point for single-series charts."""
 	return [
@@ -51,13 +52,13 @@ def build_bar_chart(
 	return {
 		"title": {"text": title, "left": "center", "textStyle": {"fontSize": 14}},
 		"tooltip": {"trigger": "axis"},
-		"grid": {"left": "12%", "right": "5%", "bottom": "15%", "top": "18%"},
+		"grid": {"left": "15%", "right": "5%", "bottom": "15%", "top": "22%"},
 		"xAxis": {
 			"type": "category",
 			"data": categories,
 			"axisLabel": {"rotate": 30 if len(categories) > 6 else 0, "fontSize": 11},
 		},
-		"yAxis": {"type": "value", "name": y_axis_name},
+		"yAxis": {"type": "value", "name": y_axis_name, "nameGap": 10},
 		"series": [
 			{
 				"name": series_name or title,
@@ -92,13 +93,13 @@ def build_line_chart(
 		"color": CHART_COLORS,
 		"title": {"text": title, "left": "center", "textStyle": {"fontSize": 14}},
 		"tooltip": {"trigger": "axis"},
-		"grid": {"left": "12%", "right": "5%", "bottom": "15%", "top": "18%"},
+		"grid": {"left": "15%", "right": "5%", "bottom": "15%", "top": "22%"},
 		"xAxis": {
 			"type": "category",
 			"data": categories,
 			"axisLabel": {"fontSize": 11},
 		},
-		"yAxis": {"type": "value", "name": y_axis_name},
+		"yAxis": {"type": "value", "name": y_axis_name, "nameGap": 10},
 		"series": [
 			{
 				"name": series_name or title,
@@ -149,13 +150,13 @@ def build_multi_series_chart(
 		"title": {"text": title, "left": "center", "textStyle": {"fontSize": 14}},
 		"tooltip": {"trigger": "axis"},
 		"legend": {"bottom": 0, "data": [s["name"] for s in series_list]},
-		"grid": {"left": "12%", "right": "5%", "bottom": "15%", "top": "18%"},
+		"grid": {"left": "15%", "right": "5%", "bottom": "15%", "top": "22%"},
 		"xAxis": {
 			"type": "category",
 			"data": categories,
 			"axisLabel": {"fontSize": 11},
 		},
-		"yAxis": {"type": "value", "name": y_axis_name},
+		"yAxis": {"type": "value", "name": y_axis_name, "nameGap": 10},
 		"series": series,
 	}
 
@@ -213,7 +214,7 @@ def build_horizontal_bar(
 	return {
 		"title": {"text": title, "left": "center", "textStyle": {"fontSize": 14}},
 		"tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
-		"grid": {"left": "25%", "right": "10%", "bottom": "10%", "top": "18%"},
+		"grid": {"left": "25%", "right": "10%", "bottom": "10%", "top": "22%"},
 		"xAxis": {"type": "value", "name": x_axis_name},
 		"yAxis": {
 			"type": "category",

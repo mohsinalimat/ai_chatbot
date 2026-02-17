@@ -20,6 +20,36 @@ const chartContainer = ref(null)
 const chartInstance = shallowRef(null)
 let resizeObserver = null
 
+/**
+ * Compact number formatter for chart axes.
+ * 350,000,000 → "350.0M", 1,500 → "1.5K"
+ */
+function compactNumber(value) {
+  const abs = Math.abs(value)
+  if (abs >= 1e9) return (value / 1e9).toFixed(1) + 'B'
+  if (abs >= 1e6) return (value / 1e6).toFixed(1) + 'M'
+  if (abs >= 1e3) return (value / 1e3).toFixed(1) + 'K'
+  return value
+}
+
+/**
+ * Inject compact axis formatter on value axes so large numbers
+ * don't overflow the chart area. Mutates the option in place.
+ */
+function injectAxisFormatters(option) {
+  const patch = (axis) => {
+    if (!axis) return
+    const axes = Array.isArray(axis) ? axis : [axis]
+    for (const ax of axes) {
+      if (ax.type === 'value' && !ax.axisLabel?.formatter) {
+        ax.axisLabel = { ...ax.axisLabel, formatter: compactNumber }
+      }
+    }
+  }
+  patch(option.xAxis)
+  patch(option.yAxis)
+}
+
 onMounted(async () => {
   if (!chartContainer.value) return
 
@@ -28,7 +58,9 @@ onMounted(async () => {
   const chart = echarts.init(chartContainer.value)
   chartInstance.value = chart
 
-  chart.setOption(props.option)
+  const option = { ...props.option }
+  injectAxisFormatters(option)
+  chart.setOption(option)
 
   // Watch for container resize
   resizeObserver = new ResizeObserver(() => {
@@ -42,7 +74,9 @@ watch(
   () => props.option,
   (newOption) => {
     if (chartInstance.value && newOption) {
-      chartInstance.value.setOption(newOption, true)
+      const option = { ...newOption }
+      injectAxisFormatters(option)
+      chartInstance.value.setOption(option, true)
     }
   },
   { deep: true }

@@ -119,7 +119,10 @@ def build_system_prompt():
 		"- Use tables for comparative or tabular data.\n"
 		"- Keep responses concise and focused on the user's question.\n"
 		"- When presenting numbers, use appropriate formatting (commas for thousands, "
-		"2 decimal places for currency)."
+		"2 decimal places for currency).\n"
+		"- **NEVER** include image tags (`![](...)` or `<img ...>`) in your response. "
+		"Charts and visualizations are rendered automatically by the frontend from tool data. "
+		"Do not attempt to embed, link, or reference any chart images."
 	)
 
 	return "\n".join(parts)

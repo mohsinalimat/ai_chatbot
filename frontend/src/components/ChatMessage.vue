@@ -123,11 +123,17 @@ const renderedContent = computed(() => {
       if (typeof content !== 'string') {
         content = String(content)
       }
-      
+
       // Remove any tool_calls JSON that might have leaked into content
       // This regex removes JSON-like structures that shouldn't be in the content
       content = content.replace(/\[?\s*\{\s*["']type["']:\s*["']function["']/g, '')
-      
+
+      // Strip markdown image tags — charts are rendered by EChartRenderer, not inline images
+      content = content.replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+
+      // Strip HTML <img> tags
+      content = content.replace(/<img\s[^>]*>/gi, '')
+
       return renderMarkdown(content)
     } catch (error) {
       console.error('Markdown rendering error:', error)

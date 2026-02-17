@@ -1,17 +1,18 @@
 # AI Chatbot — Phase-wise Enhancement Roadmap
 
-## Current State Summary
+## Current State Summary (Post Phase 4)
 
 The AI Chatbot is a functional Frappe app with:
 
 - **3 DocTypes:** Chatbot Settings (Single), Chatbot Conversation, Chatbot Message
-- **10 tools** across 6 modules: CRM (2), Selling (2), Buying (2), Stock (2), Account (2), HRMS (0 — placeholder)
+- **34 tools** across 8 categories: CRM (2), Selling (5), Buying (4), Stock (4), Account (2), Finance (17), HRMS (0 — placeholder), Operations (3 — create/update/search)
 - **2 AI providers:** OpenAI (GPT-4o) and Claude (Sonnet 4.5)
-- **Vue 3 frontend:** 5 components, 1 page (ChatView), Tailwind CSS
-- **No multi-company support** — all tools query across companies
-- **No multi-currency support** — monetary values summed without conversion
-- **No streaming** — placeholder only, falls back to non-streaming
-- **SQL injection vulnerabilities** in selling.py and stock.py (raw string interpolation)
+- **Streaming:** Real-time token streaming via Frappe Realtime (Socket.IO/WebSocket)
+- **CRUD:** Create, update, search ERPNext records via chat with confirmation pattern
+- **ECharts:** Inline chart rendering (bar, line, pie, horizontal bar, multi-series) with multi-color palette
+- **Multi-company & multi-currency:** All tools use `company` parameter and `base_*` fields
+- **Data layer:** `frappe.qb` Query Builder throughout — no raw SQL
+- **Vue 3 frontend:** Components for chat, streaming, charts, tool calls
 
 ---
 
@@ -22,490 +23,27 @@ The AI Chatbot is a functional Frappe app with:
 3. **Backward compatible:** Each phase must leave the app fully functional. No half-finished features merged.
 4. **Incremental dependencies:** Only add Python/npm packages when the phase that needs them is being implemented.
 5. **Frappe-native patterns:** Use Frappe ORM (`frappe.get_all`, `frappe.get_list`) instead of raw SQL. Use `frappe.qb` (Query Builder) for complex queries.
+6. **Permission-aware:** Respect Frappe's permission model. Users should only access data they are authorized to see.
 
 ---
 
-## Phase 1: Foundation — Core Framework, Data Layer & Security Fixes
+## Completed Phases
 
-**Goal:** Fix existing issues, add multi-company/multi-currency support, create a clean data layer that all future tools build on.
+### Phase 1: Foundation ✅
 
-### 1.1 Core Framework (`ai_chatbot/core/`)
+Core framework (`core/config.py`, `constants.py`, `exceptions.py`, `logger.py`), data layer (`data/queries.py`, `analytics.py`, `currency.py`), tool registry (`tools/registry.py`), multi-company/currency refactor of all tools, SQL injection fixes.
 
-Create shared infrastructure used by all subsequent phases.
+### Phase 2: Streaming ✅
 
-```
-ai_chatbot/core/
-├── __init__.py
-├── config.py          # Centralized app configuration
-├── constants.py       # App-wide constants (default limits, date formats, etc.)
-├── exceptions.py      # Custom exception classes
-└── logger.py          # Structured logging wrapper around frappe.log_error
-```
+Token-by-token streaming via `frappe.publish_realtime` (Socket.IO/WebSocket through Redis Pub/Sub). Provider streaming for OpenAI and Claude. Frontend composable (`useStreaming.js`), streaming message rendering, auto-scroll, tool call display during stream.
 
-**config.py** — Reads from Chatbot Settings DocType and provides typed access:
-- `get_default_company()` → returns user's default company
-- `get_company_currency(company)` → returns company's default currency
-- `get_enabled_tools()` → returns list of enabled tool categories
-- `get_ai_provider()` → returns configured provider name and settings
+### Phase 3: Data Operations (CRUD) ✅
 
-**exceptions.py** — Custom exceptions for clear error handling:
-- `ChatbotError` (base)
-- `ToolExecutionError`
-- `ProviderError`
-- `ValidationError`
-- `PermissionError`
+Create/update/search tools (`tools/operations/`). Document creation (Lead, Opportunity, ToDo, Sales Order), status updates, fuzzy search. Two-step confirmation pattern for write operations. `enable_write_operations` settings flag.
 
-### 1.2 Data Layer (`ai_chatbot/data/`)
+### Phase 4: Finance Tools & Business Intelligence ✅
 
-A centralized data access layer that all tools use. This eliminates raw SQL and enforces multi-company/multi-currency patterns.
-
-```
-ai_chatbot/data/
-├── __init__.py
-├── queries.py         # Read-only data provider (frappe.get_all / frappe.qb)
-├── operations.py      # Create, update, delete operations (Phase 3)
-├── analytics.py       # Aggregation queries (SUM, COUNT, GROUP BY)
-└── currency.py        # Currency conversion utilities
-```
-
-**queries.py** — Generic read helpers:
-- `get_documents(doctype, filters, fields, company=None, order_by=None, limit=None)` — wrapper around `frappe.get_all` that auto-injects company filter
-- `get_document(doctype, name)` — single document fetch with permission check
-- `get_count(doctype, filters, company=None)` — count with company filter
-
-**analytics.py** — Aggregation helpers using `frappe.qb`:
-- `get_sum(doctype, field, filters, company=None)` — SUM with company filter
-- `get_grouped_sum(doctype, sum_field, group_field, filters, company=None)` — GROUP BY
-- `get_time_series(doctype, value_field, date_field, filters, company=None, granularity="monthly")` — time-bucketed aggregation
-- `get_top_n(doctype, value_field, group_field, filters, company=None, limit=10)` — top N by value
-
-**currency.py** — Multi-currency utilities:
-- `get_exchange_rate(from_currency, to_currency, date=None)` — uses ERPNext's Currency Exchange doctype
-- `convert_to_company_currency(amount, from_currency, company, date=None)` — converts to base currency
-- `get_base_amount_field(doctype)` — returns the base currency field name (e.g., `base_grand_total` for Sales Invoice)
-- `format_currency(amount, currency)` — format with symbol
-
-### 1.3 Security Fixes
-
-**Eliminate SQL injection vulnerabilities:**
-- `selling.py: get_top_customers()` — rewrite using `frappe.qb` or `frappe.get_all` with GROUP BY
-- `stock.py: get_inventory_summary()` — rewrite using `frappe.qb`
-- `stock.py: get_low_stock_items()` — rewrite using `frappe.qb`, fix unused `threshold_days` parameter
-
-### 1.4 Refactor Existing Tools for Multi-Company & Multi-Currency
-
-Every existing tool gets updated:
-
-| Tool | Add `company` param | Use `base_grand_total` | Return currency |
-|------|---------------------|----------------------|-----------------|
-| get_lead_statistics | Yes (Lead has company) | N/A | N/A |
-| get_opportunity_pipeline | Yes | Yes (`opportunity_amount` → base) | Yes |
-| get_sales_analytics | Yes | Yes (`base_grand_total`) | Yes |
-| get_top_customers | Yes | Yes (`base_grand_total`) | Yes |
-| get_purchase_analytics | Yes | Yes (`base_grand_total`) | Yes |
-| get_supplier_performance | Yes | Yes (`base_grand_total`) | Yes |
-| get_inventory_summary | Yes (via warehouse→company) | Yes (`stock_value` is base) | Yes |
-| get_low_stock_items | Yes (via warehouse→company) | N/A (quantities) | N/A |
-| get_financial_summary | Yes | Yes (`base_grand_total`) | Yes |
-| get_cash_flow_analysis | Yes | Yes (`base_paid_amount`) | Yes |
-
-**Tool schema update pattern:**
-```python
-# Every monetary tool adds these parameters:
-{
-    "company": {
-        "type": "string",
-        "description": "Company name. Defaults to user's default company."
-    },
-    "currency": {
-        "type": "string",
-        "description": "Display currency. Defaults to company currency."
-    }
-}
-```
-
-**Tool response update pattern:**
-```python
-# Every monetary tool returns currency info:
-{
-    "total_revenue": 150000.00,
-    "currency": "USD",
-    "company": "My Company LLC",
-    # ... rest of data
-}
-```
-
-### 1.5 Tool Registry (`ai_chatbot/tools/registry.py`)
-
-Replace the current `hasattr()` lookup in `base.py` with a proper registry:
-
-```python
-# Tools self-register with metadata
-@register_tool(
-    name="get_sales_analytics",
-    category="selling",
-    requires=["enable_sales_tools"],
-    description="Get sales analytics including revenue, orders, and growth trends"
-)
-def get_sales_analytics(from_date=None, to_date=None, customer=None, company=None):
-    ...
-```
-
-Benefits:
-- Tool discovery without dynamic import scanning
-- Metadata for categorization, permissions, and feature flags
-- Easier to add new tools in later phases
-
-### 1.6 Deliverables
-
-| Item | Files |
-|------|-------|
-| Core framework | `core/__init__.py`, `config.py`, `constants.py`, `exceptions.py`, `logger.py` |
-| Data layer | `data/__init__.py`, `queries.py`, `analytics.py`, `currency.py` |
-| Tool registry | `tools/registry.py`, updated `tools/base.py` |
-| Refactored tools | Updated `crm.py`, `selling.py`, `buying.py`, `stock.py`, `account.py` |
-| Security fixes | SQL injection eliminated in `selling.py`, `stock.py` |
-
-**New dependencies:** None (uses only Frappe built-ins).
-
----
-
-## Phase 2: Streaming (Frappe Realtime) & Enhanced Chat Experience
-
-**Goal:** Implement real-time token streaming for AI responses using Frappe's built-in `frappe.publish_realtime` (Socket.IO/WebSocket via Redis Pub/Sub). Improve chat UX.
-
-### 2.1 Why Frappe Realtime (Not SSE)
-
-Frappe ships with a realtime event system based on Socket.IO:
-- **Server:** `frappe.publish_realtime(event, message, user=...)` — publishes via Redis Pub/Sub to Node.js Socket.IO server
-- **Client:** `frappe.realtime.on(event, callback)` — listens on WebSocket
-- **Advantages over custom SSE:** Already integrated with Frappe auth, user targeting, Redis infrastructure, and session management. No custom endpoint needed.
-
-**`frappe.publish_realtime` full signature:**
-```python
-frappe.publish_realtime(
-    event: str | None = None,        # Event name
-    message: dict | None = None,     # JSON payload
-    room: str | None = None,         # Target room (auto-resolved)
-    user: str | None = None,         # Target specific user → room "user:{username}"
-    doctype: str | None = None,      # Target document subscribers
-    docname: str | None = None,      # Target document subscribers
-    task_id: str | None = None,      # Background task tracking
-    after_commit: bool = False,      # Defer until DB commit
-)
-```
-
-**Room targeting for chatbot:**
-- Use `user=frappe.session.user` to send tokens only to the requesting user
-- Each `publish_realtime` call sends one chunk through Redis → Socket.IO → browser
-
-### 2.2 Backend Streaming (`ai_chatbot/api/streaming.py`)
-
-```
-ai_chatbot/api/
-├── chat.py            # Existing (updated: delegates to streaming when enabled)
-└── streaming.py       # NEW: Frappe realtime streaming logic
-```
-
-**streaming.py:**
-- `stream_chat_response(conversation_id, message)` — `@frappe.whitelist()` endpoint
-- Calls AI provider with streaming enabled
-- Emits tokens via `frappe.publish_realtime` to the requesting user
-- Event types published:
-  - `ai_chat_stream_start` — stream begins (includes conversation_id)
-  - `ai_chat_token` — partial text chunk (batched: ~3-5 tokens per emit to reduce Redis overhead)
-  - `ai_chat_tool_call` — tool invocation (tool name, arguments)
-  - `ai_chat_tool_result` — tool execution result
-  - `ai_chat_stream_end` — stream complete (includes full message for persistence)
-  - `ai_chat_error` — error during streaming
-- Handles tool calling mid-stream: pauses streaming → executes tool → publishes tool result → resumes
-
-**Provider updates (`ai_chatbot/utils/ai_providers.py`):**
-- `OpenAIProvider.chat_completion_stream()` — yield tokens from OpenAI streaming API
-- `ClaudeProvider.chat_completion_stream()` — yield tokens from Claude streaming API
-- Both yield structured events: `{"type": "token", "content": "..."}`
-
-**Token batching strategy:**
-```python
-# Batch small tokens to reduce Redis Pub/Sub overhead
-buffer = ""
-for chunk in provider.chat_completion_stream(messages, tools):
-    if chunk["type"] == "token":
-        buffer += chunk["content"]
-        if len(buffer) >= 20 or chunk.get("finish"):  # ~20 chars per emit
-            frappe.publish_realtime(
-                "ai_chat_token",
-                {"conversation_id": conv_id, "content": buffer},
-                user=frappe.session.user,
-            )
-            buffer = ""
-```
-
-### 2.3 Frontend Streaming (`frontend/src/composables/useStreaming.js`)
-
-```
-frontend/src/
-├── composables/
-│   └── useStreaming.js    # NEW: Frappe realtime listener composable
-├── components/
-│   ├── ChatMessage.vue    # Updated for streaming state
-│   └── StreamingMessage.vue  # NEW: renders partial content
-```
-
-**useStreaming.js (Vue 3 Composable):**
-```javascript
-// Uses Frappe's built-in Socket.IO client
-export function useStreaming(conversationId) {
-    const streamingContent = ref("")
-    const isStreaming = ref(false)
-
-    function startListening() {
-        isStreaming.value = true
-        frappe.realtime.on("ai_chat_token", (data) => {
-            if (data.conversation_id === conversationId.value) {
-                streamingContent.value += data.content
-            }
-        })
-        frappe.realtime.on("ai_chat_stream_end", (data) => {
-            if (data.conversation_id === conversationId.value) {
-                isStreaming.value = false
-            }
-        })
-    }
-
-    function stopListening() {
-        frappe.realtime.off("ai_chat_token")
-        frappe.realtime.off("ai_chat_stream_end")
-    }
-
-    return { streamingContent, isStreaming, startListening, stopListening }
-}
-```
-
-**StreamingMessage.vue:**
-- Renders tokens as they arrive with a cursor animation
-- Shows tool call execution inline (tool name, arguments, result)
-- Transitions to final `ChatMessage.vue` when stream completes
-
-### 2.4 Enhanced Chat Features
-
-- **Auto-scroll with smart behavior:** Don't force-scroll if user has scrolled up to read history
-- **Message retry:** Re-send failed messages
-- **Stop generation:** Abort in-progress streaming response (publishes cancel event)
-- **Copy message:** Copy assistant response to clipboard
-
-### 2.5 Deliverables
-
-| Item | Files |
-|------|-------|
-| Realtime streaming backend | `api/streaming.py`, updated `utils/ai_providers.py` |
-| Frontend streaming | `composables/useStreaming.js`, `components/StreamingMessage.vue` |
-| Chat UX | Updated `ChatMessage.vue`, `ChatView.vue`, `ChatInput.vue` |
-
-**New dependencies:** None (uses Frappe's built-in Socket.IO/Redis infrastructure and provider streaming APIs).
-
----
-
-## Phase 3: Data Operations (CRUD) via Chat
-
-**Goal:** Let users create, update, and delete ERPNext documents through natural language.
-
-### 3.1 Data Operations Layer (`ai_chatbot/data/operations.py`)
-
-```
-ai_chatbot/data/
-├── operations.py      # Create, update, delete with validation
-└── validators.py      # Input validation and permission checks
-```
-
-**operations.py:**
-- `create_document(doctype, values, company=None)` — creates document with validation
-- `update_document(doctype, name, values)` — updates fields with permission check
-- `delete_document(doctype, name)` — soft-delete with confirmation pattern
-
-**validators.py:**
-- `validate_mandatory_fields(doctype, values)` — checks required fields
-- `validate_link_fields(doctype, values)` — validates linked document existence
-- `check_permission(doctype, name, perm_type)` — Frappe permission check wrapper
-
-### 3.2 Operation Tools (`ai_chatbot/tools/operations/`)
-
-```
-ai_chatbot/tools/operations/
-├── __init__.py
-├── create.py          # Document creation tools
-├── update.py          # Document update tools
-└── search.py          # Document search/lookup tools
-```
-
-**Create tools:**
-- `create_lead(first_name, company_name, email, phone, source, company=None)`
-- `create_opportunity(party_name, opportunity_amount, currency, company=None)`
-- `create_todo(description, assigned_to, date, priority)`
-- `create_sales_order(customer, items, delivery_date, company=None)`
-
-**Update tools:**
-- `update_lead_status(lead_name, status)`
-- `update_opportunity_status(opportunity_name, status)`
-
-**Search tools:**
-- `search_customers(query, limit=10, company=None)` — fuzzy search
-- `search_items(query, limit=10, company=None)` — item lookup
-- `search_documents(doctype, query, filters=None, company=None)` — generic search
-
-### 3.3 Confirmation Pattern
-
-For write operations, implement a two-step confirmation:
-
-1. AI prepares the operation and presents it to the user:
-   ```
-   I'll create a Lead with these details:
-   - Name: John Smith
-   - Company: Acme Corp
-   - Email: john@acme.com
-
-   Shall I proceed?
-   ```
-
-2. User confirms → tool executes the write operation.
-
-This is handled via a `confirmation_required` flag in the tool schema and a frontend confirmation dialog.
-
-### 3.4 Deliverables
-
-| Item | Files |
-|------|-------|
-| Data operations | `data/operations.py`, `data/validators.py` |
-| Operation tools | `tools/operations/create.py`, `update.py`, `search.py` |
-| Confirmation UI | Updated `ChatMessage.vue` with confirm/cancel buttons |
-| Settings | Updated Chatbot Settings DocType with `enable_write_operations` flag |
-
-**New dependencies:** None.
-
----
-
-## Phase 4: Finance Tools & Business Intelligence
-
-**Goal:** Add comprehensive financial analysis tools. This is the highest business-value phase.
-
-### 4.1 Finance Tools (`ai_chatbot/tools/finance/`)
-
-```
-ai_chatbot/tools/finance/
-├── __init__.py
-├── budget.py              # Budget vs actual analysis
-├── ratios.py              # Financial ratio analysis
-├── profitability.py       # Profitability analysis (by customer, item, territory)
-├── working_capital.py     # Working capital analysis
-├── receivables.py         # Accounts receivable aging
-├── payables.py            # Accounts payable aging
-└── cash_flow.py           # Enhanced cash flow (replaces current account.py version)
-```
-
-**Budget tools (`budget.py`):**
-- `get_budget_vs_actual(fiscal_year, company, cost_center=None)` — budget variance by account
-- `get_budget_variance(fiscal_year, company, account=None)` — detailed variance with % deviation
-
-**Financial ratios (`ratios.py`):**
-- `get_liquidity_ratios(company, date=None)` — current ratio, quick ratio
-- `get_profitability_ratios(company, from_date, to_date)` — gross margin, net margin, ROA
-- `get_efficiency_ratios(company, from_date, to_date)` — inventory turnover, receivable days, payable days
-
-**Profitability analysis (`profitability.py`):**
-- `get_profitability_by_customer(company, from_date, to_date, limit=10)` — most/least profitable customers
-- `get_profitability_by_item(company, from_date, to_date, limit=10)` — product-level margin
-- `get_profitability_by_territory(company, from_date, to_date)` — geographic profitability
-
-**Working capital (`working_capital.py`):**
-- `get_working_capital_summary(company, date=None)` — receivables, payables, inventory, net WC
-- `get_cash_conversion_cycle(company, from_date, to_date)` — DSO + DIO - DPO
-
-**Receivables & payables:**
-- `get_receivable_aging(company, ageing_based_on="Due Date")` — aging buckets (0-30, 31-60, 61-90, 90+)
-- `get_payable_aging(company, ageing_based_on="Due Date")` — same for payables
-- `get_top_debtors(company, limit=10)` — highest outstanding receivables
-- `get_top_creditors(company, limit=10)` — highest outstanding payables
-
-**Enhanced cash flow (`cash_flow.py`):**
-- `get_cash_flow_statement(company, from_date, to_date)` — operating, investing, financing activities
-- `get_cash_flow_trend(company, months=12)` — monthly cash flow with trend
-- `get_bank_balance(company, account=None)` — current bank/cash balances
-
-All tools:
-- Accept `company` parameter (default: user's default company)
-- Return `currency` field with company's base currency
-- Use `base_*` fields for amounts (multi-currency safe)
-- Use `frappe.qb` or `frappe.get_all` for queries (no raw SQL)
-
-### 4.2 Enhanced Analytics Tools
-
-Upgrade existing modules with new capabilities:
-
-**Selling (`tools/analytics/selling.py` — replaces current `selling.py`):**
-- `get_sales_trend(company, months=12, granularity="monthly")` — time series with chart data
-- `get_sales_by_territory(company, from_date, to_date)` — geographic breakdown
-- `get_sales_by_item_group(company, from_date, to_date)` — product category analysis
-- Existing tools retained with multi-company/currency fixes
-
-**Buying (`tools/analytics/buying.py` — replaces current `buying.py`):**
-- `get_purchase_trend(company, months=12, granularity="monthly")` — time series
-- `get_purchase_by_item_group(company, from_date, to_date)` — category breakdown
-- Existing tools retained with fixes
-
-**Stock (`tools/analytics/stock.py` — replaces current `stock.py`):**
-- `get_stock_movement(item_code=None, warehouse=None, from_date=None, to_date=None, company=None)` — in/out movement
-- `get_stock_ageing(warehouse=None, company=None)` — age of stock in warehouse
-- Existing tools retained with fixes
-
-### 4.3 Chart Data Format
-
-Tools that return time series or categorical data include an `echart_option` field that the frontend can pass directly to ECharts:
-
-```python
-{
-    "data": { ... },  # Raw data
-    "echart_option": {
-        "title": {"text": "Monthly Sales Revenue"},
-        "xAxis": {"type": "category", "data": ["Jan", "Feb", "Mar", ...]},
-        "yAxis": {"type": "value", "name": "USD"},
-        "series": [{"type": "bar", "data": [12000, 15000, 13000, ...]}],
-        "tooltip": {"trigger": "axis"}
-    },
-    "currency": "USD",
-    "company": "My Company LLC"
-}
-```
-
-### 4.4 Frontend Chart Rendering
-
-```
-frontend/src/components/
-├── charts/
-│   ├── EChartRenderer.vue     # Generic ECharts wrapper
-│   └── ChartMessage.vue       # Chat message with embedded chart
-```
-
-**EChartRenderer.vue:**
-- Accepts ECharts option object as prop
-- Handles resize, theme, and responsive layout
-- Lazy-loads ECharts library
-
-**ChatMessage.vue update:**
-- Detects `echart_option` in tool results
-- Renders inline chart within the chat message
-
-### 4.5 Deliverables
-
-| Item | Files |
-|------|-------|
-| Finance tools | `tools/finance/budget.py`, `ratios.py`, `profitability.py`, `working_capital.py`, `receivables.py`, `payables.py`, `cash_flow.py` |
-| Enhanced analytics | Updated `tools/analytics/selling.py`, `buying.py`, `stock.py` |
-| Chart rendering | `components/charts/EChartRenderer.vue`, `ChartMessage.vue` |
-| Settings | Updated DocType with `enable_finance_tools` flag |
-
-**New dependencies:**
-- **Frontend:** `echarts` (npm)
-- **Backend:** None (uses Frappe ORM and ERPNext data)
+17 finance tools across 7 modules (receivables, payables, cash flow, budget, profitability, working capital, ratios). Enhanced selling (3), buying (2), stock (2) tools with charts. ECharts frontend integration (`EChartRenderer.vue`, `ChartMessage.vue`). Tool results persistence. Multi-color chart palette.
 
 ---
 
@@ -513,47 +51,512 @@ frontend/src/components/
 
 **Goal:** Complete the HRMS placeholder and expand CRM capabilities.
 
-### 5.1 HRMS Tools (`ai_chatbot/tools/analytics/hrms.py`)
+### 5.1 HRMS Tools (`ai_chatbot/tools/hrms.py`)
 
 Requires ERPNext HRMS module to be installed.
 
-- `get_employee_count(company, department=None, status="Active")` — headcount
-- `get_attendance_summary(company, from_date, to_date, department=None)` — attendance stats
-- `get_leave_balance(employee=None, leave_type=None, company=None)` — leave balances
-- `get_payroll_summary(company, from_date, to_date)` — total salary, deductions, net pay
-- `get_department_wise_salary(company, month=None)` — salary by department
-- `get_employee_turnover(company, from_date, to_date)` — joining vs leaving rate
+- `get_employee_count(company, department=None, status="Active")` — headcount with department breakdown
+- `get_attendance_summary(company, from_date, to_date, department=None)` — attendance stats (present, absent, leave, half-day)
+- `get_leave_balance(employee=None, leave_type=None, company=None)` — leave balances by type
+- `get_payroll_summary(company, from_date, to_date)` — total salary, deductions, net pay with chart
+- `get_department_wise_salary(company, month=None)` — salary by department with pie chart
+- `get_employee_turnover(company, from_date, to_date)` — joining vs leaving rate with trend chart
 
 All tools:
-- Check if HRMS module is installed before executing
+- Check if HRMS module is installed before executing (`frappe.get_installed_apps()`)
 - Respect `company` parameter
 - Payroll tools use `base_*` amounts for multi-currency
+- Return ECharts options where applicable
 
-### 5.2 Enhanced CRM Tools (`ai_chatbot/tools/analytics/crm.py`)
+### 5.2 Enhanced CRM Tools (`ai_chatbot/tools/crm.py`)
 
 Expand the existing 2 tools:
 
-- `get_lead_conversion_rate(company, from_date, to_date)` — lead-to-opportunity rate
-- `get_lead_source_analysis(company, from_date, to_date)` — leads by source
-- `get_sales_funnel(company, from_date, to_date)` — lead → opportunity → quotation → order
-- `get_customer_acquisition_cost(company, from_date, to_date)` — if campaign data available
-- Existing tools updated with multi-company support
+- `get_lead_conversion_rate(company, from_date, to_date)` — lead-to-opportunity conversion rate with funnel chart
+- `get_lead_source_analysis(company, from_date, to_date)` — leads by source with pie chart
+- `get_sales_funnel(company, from_date, to_date)` — lead → opportunity → quotation → order pipeline with funnel visualization
+- `get_customer_acquisition_cost(company, from_date, to_date)` — CAC if campaign data available
+- Existing tools (`get_lead_statistics`, `get_opportunity_pipeline`) updated with ECharts
 
-### 5.3 Deliverables
+### 5.3 Settings
+
+- Add `enable_hrms_tools` flag to Chatbot Settings
+- Conditional on HRMS module installation (graceful fallback)
+
+### 5.4 Deliverables
 
 | Item | Files |
 |------|-------|
-| HRMS tools | `tools/analytics/hrms.py` (full implementation) |
-| CRM tools | Updated `tools/analytics/crm.py` |
-| Settings | HRMS feature flag, conditional on module installation |
+| HRMS tools | `tools/hrms.py` (full implementation) |
+| CRM tools | Updated `tools/crm.py` with 4 new tools + charts |
+| Settings | `enable_hrms_tools` flag, conditional on module installation |
 
 **New dependencies:** None (queries HRMS doctypes if installed).
 
 ---
 
+## Phase 5A: UX & Accessibility
+
+**Goal:** Enhance the chat interface with usability features — sidebar toggle, voice input, prompt suggestions, and improved chart/table rendering. All changes are frontend-only or frontend-heavy.
+
+### 5A.1 Sidebar Toggle
+
+**Files:** `frontend/src/pages/ChatView.vue`, `frontend/src/components/Sidebar.vue`
+
+- Add `sidebarCollapsed` ref in ChatView.vue
+- Toggle button (hamburger icon) in ChatHeader
+- When collapsed: sidebar width → 0 or narrow icon strip, chat area → full width
+- Persist preference in `localStorage`
+- Smooth CSS transition (width animation)
+- Mobile responsive: sidebar as overlay on small screens
+
+```
+┌──────┬──────────────────────────┐     ┌──────────────────────────────────┐
+│      │                          │     │ ≡                                │
+│ Side │    Chat Area             │ →   │         Chat Area (full)         │
+│ bar  │                          │     │                                  │
+└──────┴──────────────────────────┘     └──────────────────────────────────┘
+```
+
+### 5A.2 Voice Communication
+
+**Files:** `frontend/src/components/ChatInput.vue`, `frontend/src/composables/useVoiceInput.js`
+
+**Speech-to-Text (input):**
+- New composable `useVoiceInput.js` using Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`)
+- Microphone button in ChatInput (icon: `Mic` from lucide-vue-next)
+- Visual feedback: pulsing animation when recording, waveform indicator
+- Auto-insert transcribed text into input field
+- Language auto-detection from browser locale
+- Graceful fallback message for unsupported browsers
+
+**Text-to-Speech (output — optional):**
+- Speaker button on assistant messages using `SpeechSynthesis` API
+- Read aloud the response text (strip markdown formatting first)
+- Play/pause/stop controls
+
+```javascript
+// useVoiceInput.js — composable
+export function useVoiceInput() {
+    const isListening = ref(false)
+    const transcript = ref("")
+    const isSupported = ref('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+    function startListening() { ... }
+    function stopListening() { ... }
+
+    return { isListening, transcript, isSupported, startListening, stopListening }
+}
+```
+
+### 5A.3 User Prompt Help (@mentions & Suggestions)
+
+**Files:** `frontend/src/components/ChatInput.vue`, `frontend/src/components/PromptSuggestions.vue`, `frontend/src/composables/usePromptHelp.js`
+
+**@Mention Autocomplete:**
+- When user types `@`, show dropdown with context helpers:
+  - `@company` → inserts user's default company name
+  - `@period` → shows sub-menu: "This Month", "Last Month", "This Quarter", "This FY", "Last FY"
+  - `@cost_center` → lists available cost centers
+  - `@department` → lists departments
+  - `@warehouse` → lists warehouses
+  - `@customer` → searches customers
+  - `@item` → searches items
+- Dropdown positioned above the input (like Discord/Slack mentions)
+- Fetch options via lightweight Frappe API calls (`frappe.call` with `frappe.get_list`)
+- Search/filter as user types after `@`
+- On selection, replace `@token` with actual value in the input
+
+**Prompt Suggestions:**
+- Show suggestion chips above the input for new conversations:
+  - "Show me this month's sales summary"
+  - "What are the top 10 customers by revenue?"
+  - "Show accounts receivable aging"
+  - "What is the current cash flow?"
+- Configurable suggestions stored in Chatbot Settings (JSON field `prompt_suggestions`)
+- Fade out after first message is sent
+
+### 5A.4 Multi Charts & Styled Tables
+
+**Files:** `frontend/src/components/charts/ChartMessage.vue`, `frontend/src/components/charts/DataTable.vue`
+
+**Multiple Charts per Response:**
+- Tools can return a `charts` array (list of ECharts option objects) instead of single `echart_option`
+- Frontend iterates and renders each chart in sequence
+- Backend `build_dashboard_charts()` helper for composite responses (e.g., CFO dashboard returns 4 charts)
+- Horizontal layout for 2 small charts side-by-side, vertical stack for more
+
+**Styled Data Tables:**
+- New `DataTable.vue` component for structured tabular data
+- Tools return `table_data` object: `{"headers": [...], "rows": [...], "footer": [...]}`
+- Renders as styled HTML table with:
+  - Alternating row colors
+  - Right-aligned numbers with currency formatting
+  - Sortable columns (click header)
+  - Compact vs expanded view toggle
+- Falls back to AI-generated markdown tables when `table_data` is not present
+
+### 5A.5 Deliverables
+
+| Item | Files |
+|------|-------|
+| Sidebar toggle | Updated `ChatView.vue`, `Sidebar.vue`, `ChatHeader.vue` |
+| Voice input | `composables/useVoiceInput.js`, updated `ChatInput.vue` |
+| Prompt help | `composables/usePromptHelp.js`, `PromptSuggestions.vue`, updated `ChatInput.vue` |
+| Multi charts | Updated `ChartMessage.vue`, `charts.py` (`build_dashboard_charts`) |
+| Data tables | `components/charts/DataTable.vue`, updated `ChatMessage.vue` |
+
+**New dependencies:** None (Web Speech API is a browser built-in).
+
+---
+
+## Phase 5B: Enterprise Analytics & Configuration
+
+**Goal:** Make the chatbot enterprise-ready with Frappe permissions, accounting dimensions, report integration, CFO-level reporting, parent company consolidation, configurable prompts, configurable constants, and plugin extensibility.
+
+### 5B.1 User Permission Enforcement
+
+**Files:** `ai_chatbot/tools/registry.py`, tool module files
+
+**Architecture:**
+- Each `@register_tool` decorator declares which DocTypes the tool accesses:
+  ```python
+  @register_tool(
+      name="get_sales_analytics",
+      category="selling",
+      description="...",
+      parameters={...},
+      doctypes=["Sales Invoice"],  # NEW: declares accessed doctypes
+  )
+  ```
+- `registry.py`'s `execute_tool()` checks permission before calling the function:
+  ```python
+  from frappe.permissions import has_permission
+
+  for dt in tool_info.get("doctypes", []):
+      if not has_permission(dt, "read", user=frappe.session.user):
+          return {"success": False, "error": f"No permission to read {dt}"}
+  ```
+- For report-based tools (Phase 5B.3), check `has_permission(report_name, "report")`
+- Permission errors return a clear message the AI can relay to the user
+- The system prompt dynamically lists only the tools the current user has permission to use
+
+**Reference:** `from frappe.permissions import has_permission` — [Frappe Permission Docs](https://docs.frappe.io/framework/user/en/basics/users-and-permissions)
+
+### 5B.2 Accounting Dimensions
+
+**Files:** `ai_chatbot/core/dimensions.py` (new), updated finance tools, updated `prompts.py`
+
+**Discovery:**
+```python
+# ai_chatbot/core/dimensions.py
+from erpnext.accounts.doctype.accounting_dimension.accounting_dimension import (
+    get_accounting_dimensions,
+    get_dimension_with_children,
+)
+
+def get_available_dimensions():
+    """Get all active accounting dimensions for the current site."""
+    dimensions = get_accounting_dimensions()
+    return [{"fieldname": d.fieldname, "label": d.label, "document_type": d.document_type}
+            for d in dimensions]
+
+def get_dimension_values(dimension_doctype, company=None):
+    """Get all valid values for a dimension (e.g., all Cost Centers)."""
+    filters = {"company": company} if company else {}
+    return frappe.get_all(dimension_doctype, filters=filters, pluck="name")
+
+def get_dimension_with_children_safe(dimension_doctype, value):
+    """Get dimension value including all children (for tree structures like Cost Center)."""
+    return get_dimension_with_children(dimension_doctype, value)
+```
+
+**Tool Integration:**
+- Finance tools (`receivables.py`, `payables.py`, `profitability.py`, `budget.py`, etc.) accept dynamic dimension parameters
+- Common pattern:
+  ```python
+  @register_tool(
+      name="get_receivable_aging",
+      ...
+      parameters={
+          ...,
+          "cost_center": {"type": "string", "description": "Filter by Cost Center"},
+          "department": {"type": "string", "description": "Filter by Department"},
+          "project": {"type": "string", "description": "Filter by Project"},
+      },
+  )
+  def get_receivable_aging(..., cost_center=None, department=None, project=None):
+      ...
+      # Apply dimension filters dynamically
+      for dim_field, dim_value in [("cost_center", cost_center), ("department", department), ("project", project)]:
+          if dim_value:
+              query = query.where(table[dim_field] == dim_value)
+  ```
+- A shared helper `apply_dimension_filters(query, table, **dimensions)` avoids repetition
+- System prompt includes available dimensions so the AI knows to ask or suggest them
+
+**Reference:** `from erpnext.accounts.doctype.accounting_dimension.accounting_dimension import get_accounting_dimensions` — [ERPNext Accounting Dimensions](https://docs.frappe.io/erpnext/user/manual/en/accounting-dimensions)
+
+### 5B.3 Report Data for Analysis
+
+**Files:** `ai_chatbot/tools/reports.py` (new), `ai_chatbot/core/constants.py` (updated)
+
+**Architecture:**
+- Generic tool that executes any Frappe/ERPNext report and returns the result:
+  ```python
+  @register_tool(
+      name="get_report_data",
+      category="reports",
+      description="Fetch data from any ERPNext report for analysis",
+      parameters={
+          "report_name": {"type": "string", "description": "Name of the report (e.g., 'General Ledger', 'Accounts Receivable')"},
+          "filters": {"type": "object", "description": "Report filters as key-value pairs"},
+      },
+      doctypes=[],  # Permission checked per-report
+  )
+  def get_report_data(report_name, filters=None):
+      # Check report permission
+      if not frappe.has_permission("Report", report_name, "read"):
+          return {"error": "No permission to access this report"}
+
+      result = frappe.get_report_result(report_name, filters=filters or {})
+      return {
+          "columns": result.get("columns", []),
+          "data": result.get("result", [])[:100],  # Limit rows for context window
+          "report_name": report_name,
+          "filters_used": filters,
+      }
+  ```
+- Pre-configured report shortcuts for common analyses:
+  - `get_general_ledger(from_date, to_date, account=None, company=None)`
+  - `get_trial_balance(from_date, to_date, company=None)`
+  - `get_profit_and_loss(from_date, to_date, company=None)`
+  - `get_balance_sheet(date, company=None)`
+  - `get_accounts_receivable_report(company=None, ageing_based_on="Due Date")`
+- **Data consistency guarantee:** AI analysis is based on the same data the user sees in ERPNext reports
+- Add `enable_report_tools` to TOOL_CATEGORIES in constants.py
+
+### 5B.4 CFO Reporting (Composite Analysis)
+
+**Files:** `ai_chatbot/tools/finance/cfo.py` (new)
+
+**Architecture:**
+- Composite tools that call multiple existing tools and aggregate results:
+  ```python
+  @register_tool(
+      name="get_cfo_dashboard",
+      category="finance",
+      description="Comprehensive financial dashboard with P&L, cash flow, ratios, and receivables/payables overview",
+      parameters={
+          "from_date": {"type": "string", "description": "Start date. Defaults to fiscal year start."},
+          "to_date": {"type": "string", "description": "End date. Defaults to fiscal year end."},
+          "company": {"type": "string", "description": "Company. Defaults to user's default company."},
+      },
+  )
+  def get_cfo_dashboard(from_date=None, to_date=None, company=None):
+      """Aggregates: P&L summary, cash flow, key ratios, AR/AP aging, budget variance."""
+      ...
+      return {
+          "summary": { ... },
+          "charts": [pl_chart, cashflow_chart, aging_chart, budget_chart],
+          "tables": [ratios_table, top_debtors_table],
+          ...
+      }
+  ```
+- Additional CFO-level tools:
+  - `get_financial_overview(company, period)` — high-level KPIs: revenue, expenses, net profit, cash position, AR, AP
+  - `get_monthly_comparison(company, months=3)` — month-over-month comparison with variance
+  - `get_year_over_year(company)` — YoY comparison of key metrics
+- All return multiple charts via `charts` array (rendered by Phase 5A.4's multi-chart frontend)
+
+### 5B.5 Parent Company / Multi-Company Consolidation
+
+**Files:** `ai_chatbot/core/config.py` (updated), `ai_chatbot/core/consolidation.py` (new), updated `prompts.py`
+
+**Discovery:**
+```python
+# ai_chatbot/core/consolidation.py
+def is_parent_company(company):
+    """Check if a company has child companies."""
+    return bool(frappe.db.get_descendants("Company", company))
+
+def get_child_companies(parent_company):
+    """Get all descendant companies."""
+    return frappe.db.get_descendants("Company", parent_company)
+
+def get_consolidated_data(tool_func, companies, target_currency, **kwargs):
+    """Execute a tool across multiple companies and consolidate results.
+
+    Converts all amounts to target_currency using exchange rates.
+    """
+    from ai_chatbot.data.currency import get_exchange_rate
+
+    consolidated = []
+    for company in companies:
+        result = tool_func(company=company, **kwargs)
+        company_currency = frappe.get_cached_value("Company", company, "default_currency")
+        if company_currency != target_currency:
+            rate = get_exchange_rate(company_currency, target_currency)
+            result = _convert_amounts(result, rate)
+        consolidated.append({"company": company, "data": result})
+
+    return consolidated
+```
+
+**System Prompt Integration:**
+- Detect if user's default company is a parent company
+- Include in system prompt:
+  ```
+  ## Multi-Company Context
+  - Your company "{company}" is a parent company with subsidiaries: {child_list}
+  - When the user asks for consolidated data, ask them:
+    1. Whether to include child companies
+    2. Which currency to display (parent company currency or specific currency)
+  - Use consolidation tools to aggregate across companies
+  ```
+
+**Flow:**
+1. User asks "Show total sales" → AI sees parent company context in system prompt
+2. AI asks: "Your company has subsidiaries: X, Y, Z. Would you like consolidated data or just {parent_company}?"
+3. If consolidated → "In which currency? {parent_currency} or another?"
+4. AI calls tool with `consolidated=True, currency=target_currency`
+5. Tool iterates child companies, converts, aggregates
+
+### 5B.6 Configurable System & User Prompts
+
+**Files:** `ai_chatbot/chatbot/doctype/chatbot_settings/chatbot_settings.json` (updated), `ai_chatbot/core/prompts.py` (updated)
+
+**Chatbot Settings additions:**
+- `custom_system_prompt` (Text Editor) — admin-defined system prompt additions
+- `ai_persona` (Small Text) — customizable persona description (default: "intelligent ERPNext business assistant")
+- `response_language` (Select) — preferred response language (English, Hindi, etc.)
+- `custom_instructions` (Text Editor) — additional behavioral instructions appended to system prompt
+
+**Prompt Builder update:**
+```python
+def build_system_prompt():
+    settings = frappe.get_single("Chatbot Settings")
+
+    # Use custom persona or default
+    persona = settings.ai_persona or "an intelligent ERPNext business assistant"
+    parts.append(f"You are {persona}. ...")
+
+    # Append custom system prompt if configured
+    if settings.custom_system_prompt:
+        parts.append(f"\n## Custom Instructions\n{settings.custom_system_prompt}")
+
+    # Response language
+    if settings.response_language and settings.response_language != "English":
+        parts.append(f"\n## Language\nRespond in {settings.response_language}.")
+
+    ...
+```
+
+### 5B.7 Configurable Constants
+
+**Files:** `ai_chatbot/chatbot/doctype/chatbot_settings/chatbot_settings.json` (updated), `ai_chatbot/core/constants.py` (updated), `ai_chatbot/core/config.py` (updated)
+
+**Move user-facing constants to Chatbot Settings:**
+
+| Constant | Current Location | Move To |
+|---|---|---|
+| `DEFAULT_QUERY_LIMIT` (20) | `constants.py` | Settings: `default_query_limit` (Int) |
+| `DEFAULT_TOP_N_LIMIT` (10) | `constants.py` | Settings: `default_top_n_limit` (Int) |
+| `MAX_QUERY_LIMIT` (100) | `constants.py` | Settings: `max_query_limit` (Int) |
+| Aging buckets | `constants.py` | Settings: `aging_buckets` (JSON) |
+| Prompt suggestions | — | Settings: `prompt_suggestions` (JSON) |
+
+**Keep in code (not user-configurable):**
+- `BASE_AMOUNT_FIELDS` — technical field mapping
+- `TRANSACTION_AMOUNT_FIELDS` — technical field mapping
+- `TOOL_CATEGORIES` — tied to settings flags
+- `LOG_TITLE` — internal logging
+- `DATE_FORMAT` — standardized format
+
+**Config helpers:**
+```python
+# ai_chatbot/core/config.py
+def get_query_limit(requested=None):
+    """Get query limit, capped at max."""
+    settings = get_chatbot_settings()
+    max_limit = settings.max_query_limit or 100
+    default = settings.default_query_limit or 20
+    return min(requested or default, max_limit)
+```
+
+### 5B.8 Tools as Plugins (External App Registration)
+
+**Files:** `ai_chatbot/hooks.py` (updated), `ai_chatbot/tools/registry.py` (updated)
+
+**Hook-based tool registration:**
+```python
+# In hooks.py — define the hook
+ai_chatbot_tool_modules = []  # Default empty, other apps extend this
+
+# In registry.py — load external tools
+def _ensure_tools_loaded():
+    if _TOOL_REGISTRY:
+        return
+
+    # Load built-in tools
+    import ai_chatbot.tools.crm
+    import ai_chatbot.tools.selling
+    ...
+
+    # Load external plugin tools via Frappe hooks
+    for module_path in frappe.get_hooks("ai_chatbot_tool_modules"):
+        try:
+            frappe.get_module(module_path)
+        except Exception as e:
+            frappe.log_error(f"Failed to load tool plugin: {module_path}: {e}", "AI Chatbot")
+```
+
+**How external apps register tools:**
+```python
+# In another_app/hooks.py
+ai_chatbot_tool_modules = [
+    "another_app.chatbot_tools.manufacturing",
+    "another_app.chatbot_tools.quality",
+]
+
+# In another_app/chatbot_tools/manufacturing.py
+from ai_chatbot.tools.registry import register_tool
+
+@register_tool(
+    name="get_production_summary",
+    category="manufacturing",
+    description="Get production order summary",
+    parameters={...},
+    doctypes=["Work Order"],
+)
+def get_production_summary(company=None):
+    ...
+```
+
+**TOOL_CATEGORIES update:**
+- Dynamic category registration: external apps can declare new categories
+- `TOOL_CATEGORIES` becomes a function that merges built-in + hook-defined categories
+
+### 5B.9 Deliverables
+
+| Item | Files |
+|------|-------|
+| Permissions | Updated `tools/registry.py`, all tool decorators |
+| Dimensions | `core/dimensions.py`, updated finance tools, updated `prompts.py` |
+| Reports | `tools/reports.py` (new) |
+| CFO reporting | `tools/finance/cfo.py` (new) |
+| Consolidation | `core/consolidation.py` (new), updated `config.py`, `prompts.py` |
+| Configurable prompts | Updated Chatbot Settings DocType, updated `prompts.py` |
+| Configurable constants | Updated Chatbot Settings DocType, updated `config.py`, `constants.py` |
+| Plugin system | Updated `hooks.py`, updated `registry.py` |
+
+**New dependencies:** None (uses Frappe built-ins and ERPNext APIs).
+
+---
+
 ## Phase 6: Agentic RAG — Vector Search + Multi-Agent Orchestration
 
-**Goal:** Implement a full Agentic RAG system from the start — combining vector-based document retrieval with multi-agent orchestration, planning, and iterative refinement. This skips a "basic RAG" intermediate step in favor of building the agentic architecture directly, since the retrieval layer is a component of the agent system anyway.
+**Goal:** Implement a full Agentic RAG system — combining vector-based document retrieval with multi-agent orchestration, planning, and iterative refinement.
 
 ### 6.1 RAG Foundation (`ai_chatbot/ai/rag/`)
 
@@ -575,7 +578,7 @@ ai_chatbot/ai/rag/
 - `add_documents(chunks, embeddings, metadata)` — index documents
 - `search(query_embedding, n_results=5, filters=None)` — similarity search
 - `delete_documents(source_id)` — remove indexed documents
-- Collection per company (multi-company isolation)
+- Collection per company (multi-company isolation): `knowledge_{company_slug}`
 
 **chunker.py:**
 - `chunk_text(text, chunk_size=500, overlap=50)` — simple text chunking
@@ -650,19 +653,7 @@ ai_chatbot/ai/memory/
 - **Automatic:** Index key ERPNext records (Items, Customers, Suppliers, policies) via scheduled task
 - **Incremental:** Only re-index documents that have changed since last indexing
 
-### 6.5 Integration with Chat
-
-The agentic chat flow:
-
-1. User sends message
-2. Orchestrator classifies the query
-3. For knowledge queries → Document Agent retrieves from vector store, evaluates relevance, re-queries if needed
-4. For data queries → Analyst Agent calls tools, chains results
-5. For complex queries → Planner Agent decomposes, delegates to other agents
-6. Agents can combine tool results AND document context in their responses
-7. Memory Manager tracks context budget throughout
-
-### 6.6 Frontend
+### 6.5 Frontend
 
 ```
 frontend/src/
@@ -676,7 +667,7 @@ frontend/src/
 │       └── DocumentList.vue     # List of indexed documents
 ```
 
-### 6.7 Deliverables
+### 6.6 Deliverables
 
 | Item | Files |
 |------|-------|
@@ -696,9 +687,20 @@ frontend/src/
 
 ## Phase 7: Intelligent Document Processing (IDP)
 
-**Goal:** Extract data from uploaded documents (invoices, receipts, POs) and create ERPNext records.
+**Goal:** Extract data from uploaded documents (invoices, receipts, POs) and create ERPNext records. Includes file upload capability, data comparison, and reconciliation.
 
-### 7.1 Document Extraction (`ai_chatbot/idp/`)
+### 7.1 File Upload Infrastructure
+
+**Files:** `ai_chatbot/api/files.py` (new), updated `ChatInput.vue`, updated `chatbot_message.json`
+
+- Frontend: file picker + drag-and-drop in ChatInput (accept PDF, images, Excel, CSV)
+- Upload via `frappe.handler.upload_file` API
+- Store file reference on Chatbot Message (`attachments` JSON field — already exists)
+- Pass file context to the AI: file name, type, size, and extracted text preview
+- For images: pass to LLM Vision API for analysis
+- For PDFs/Excel: extract text/tables and include in the prompt context
+
+### 7.2 Document Extraction (`ai_chatbot/idp/`)
 
 ```
 ai_chatbot/idp/
@@ -724,17 +726,51 @@ ai_chatbot/idp/
 - Fallback to OCR (pytesseract) for high-volume, lower-cost processing
 
 **Mapping flow:**
-1. User uploads document (PDF/image)
+1. User uploads document (PDF/image) in chat
 2. LLM Vision extracts structured data (supplier, items, amounts, dates)
 3. Validator checks against ERPNext schema and business rules
 4. Mapper creates draft ERPNext document
 5. User reviews and confirms (reuses Phase 3 confirmation pattern)
 6. Document is submitted
 
-**Multi-company:** Extracted documents are created in the user's default company.
-**Multi-currency:** Extracted currency is preserved; ERPNext handles conversion via exchange rate on the document.
+### 7.3 Data Comparison & Reconciliation
 
-### 7.2 Frontend
+**Files:** `ai_chatbot/idp/comparison.py` (new), `ai_chatbot/tools/operations/reconcile.py` (new)
+
+**Use case:** User attaches a client's Purchase Order PDF to a Sales Order → system compares and highlights discrepancies.
+
+**Architecture:**
+- `extract_document_data(file_url)` — extract structured data from attached file (PDF/Excel)
+- `compare_documents(extracted_data, erpnext_doc)` — field-by-field comparison
+- `generate_reconciliation_report(comparison_result)` — formatted diff report
+
+**Reconciliation tool:**
+```python
+@register_tool(
+    name="compare_document_with_record",
+    category="operations",
+    description="Compare an uploaded document with an ERPNext record and highlight differences",
+    parameters={
+        "file_url": {"type": "string", "description": "URL of the uploaded file to compare"},
+        "doctype": {"type": "string", "description": "ERPNext DocType to compare against"},
+        "docname": {"type": "string", "description": "Document name to compare against"},
+    },
+)
+def compare_document_with_record(file_url, doctype, docname):
+    ...
+```
+
+**Output format:**
+```
+| Field           | Uploaded Document | ERPNext Record | Match |
+|-----------------|-------------------|----------------|-------|
+| Supplier        | Acme Corp         | Acme Corp      | ✓     |
+| PO Number       | PO-2026-001       | PO-2026-001    | ✓     |
+| Item: Widget A  | Qty: 100          | Qty: 90        | ✗     |
+| Total Amount    | $15,000           | $13,500        | ✗     |
+```
+
+### 7.4 Frontend
 
 ```
 frontend/src/
@@ -747,19 +783,20 @@ frontend/src/
 │       └── MappingPreview.vue      # Preview ERPNext document before creation
 ```
 
-### 7.3 Deliverables
+### 7.5 Deliverables
 
 | Item | Files |
 |------|-------|
+| File upload | `api/files.py`, updated `ChatInput.vue`, updated `chatbot_message.json` |
 | Extractors | `idp/extractors/invoice_extractor.py`, `receipt_extractor.py`, `generic_extractor.py` |
 | Validators | `idp/validators/schema_validator.py`, `business_rules.py` |
 | Mappers | `idp/mappers/invoice_mapper.py`, `supplier_mapper.py`, `item_mapper.py` |
-| API | `api/documents.py` — upload, extract, map, create endpoints |
+| Comparison | `idp/comparison.py`, `tools/operations/reconcile.py` |
 | Frontend | `DocumentProcessingView.vue`, extraction/mapping components |
 | DocType | `chatbot_document_queue` — tracks processing status |
 
 **New dependencies:**
-- **Backend:** `pypdf` (if not added in Phase 6), `Pillow`, optionally `pytesseract` + `pdf2image`
+- **Backend:** `pypdf` (if not added in Phase 6), `Pillow`, optionally `pytesseract` + `pdf2image`, `openpyxl` (Excel parsing)
 - **Frontend:** None
 
 ---
@@ -815,42 +852,82 @@ ai_chatbot/tools/predictive/
 
 ## Phase 9: Automation & Notifications
 
-**Goal:** Scheduled reports, alerts, and automated workflows triggered by chat or conditions.
+**Goal:** Scheduled reports, alerts, automated workflows, and auto-email triggered by chat or conditions.
 
-### 9.1 Notification System (`ai_chatbot/automation/notifications/`)
+### 9.1 Auto Email & Scheduled Reports
+
+**Files:** `ai_chatbot/automation/scheduled_reports.py`, new DocType: `Chatbot Scheduled Report`
+
+**Chatbot Scheduled Report** DocType:
+- `report_name` (Data) — user-defined name
+- `prompt` (Text) — the prompt to execute (e.g., "Generate a weekly sales summary with top customers and revenue trend")
+- `recipients` (Table — child: email, user) — who receives the report
+- `schedule` (Select) — Daily / Weekly / Monthly / Custom Cron
+- `day_of_week` (Select) — for weekly (Monday–Sunday)
+- `day_of_month` (Int) — for monthly
+- `cron_expression` (Data) — for custom cron
+- `company` (Link: Company) — company context for the report
+- `ai_provider` (Select) — which AI to use
+- `format` (Select) — Email HTML / PDF attachment / Both
+- `enabled` (Check) — active/inactive toggle
+- `last_run` (Datetime) — last execution timestamp
+
+**Execution flow:**
+1. Scheduler triggers based on schedule
+2. System builds conversation context (system prompt + company + user)
+3. Sends prompt to AI with tools enabled
+4. Captures response (text + charts + tool results)
+5. Formats as HTML email (renders markdown, embeds chart images)
+6. Sends via `frappe.sendmail()`
+
+**Chart embedding in email:**
+- ECharts renders to PNG on the server side (use `echarts` npm with `node-canvas` or save chart snapshots)
+- Alternative: include chart data as inline HTML tables for email clients that don't render images
+
+### 9.2 Alert System
+
+**Files:** `ai_chatbot/automation/alerts.py`, new DocType: `Chatbot Alert`
+
+**Chatbot Alert** DocType:
+- `alert_name` (Data)
+- `condition_type` (Select) — Threshold / Schedule / Event
+- `condition_prompt` (Text) — natural language condition (e.g., "When accounts receivable exceeds 500,000")
+- `threshold_tool` (Data) — tool to call for threshold checks
+- `threshold_field` (Data) — field to check in tool result
+- `threshold_operator` (Select) — `>`, `<`, `>=`, `<=`, `=`
+- `threshold_value` (Float)
+- `notification_channels` (Table) — Email / WhatsApp / Slack / In-App
+- `recipients` (Table) — users/emails
+- `company` (Link: Company)
+- `enabled` (Check)
+
+**Example alerts:**
+- "Notify me when receivables exceed 500,000" → calls `get_receivable_aging`, checks `total_outstanding > 500000`
+- "Alert when stock of Camera falls below 10" → calls `get_inventory_summary` with item filter
+- "Send weekly sales summary every Monday" → scheduled report (see 9.1)
+
+### 9.3 Notification Channels
 
 ```
 ai_chatbot/automation/notifications/
 ├── __init__.py
 ├── channels/
-│   ├── email.py               # Email notifications via Frappe
+│   ├── email.py               # Email via frappe.sendmail
 │   ├── whatsapp.py            # WhatsApp via Twilio (already a dependency)
 │   └── slack.py               # Slack webhook integration
-└── alerts.py                  # Alert rule engine
+└── dispatcher.py              # Routes alerts to appropriate channels
 ```
 
-**alerts.py:**
-- `ChatbotAlert` DocType — defines conditions and actions
-- Example alerts:
-  - "Notify me when receivables exceed 500,000"
-  - "Send weekly sales summary every Monday"
-  - "Alert when stock of Item X falls below reorder level"
-- Uses Frappe's scheduled tasks (`hooks.py`) for periodic checks
-
-### 9.2 Scheduled Reports
-
-- `generate_scheduled_report(report_type, company, recipients)` — generates report and sends via email/WhatsApp
-- Report types: daily sales summary, weekly financial summary, monthly P&L
-- Uses existing tool functions to gather data, formats as HTML email or PDF
-
-### 9.3 Deliverables
+### 9.4 Deliverables
 
 | Item | Files |
 |------|-------|
+| Scheduled reports | `automation/scheduled_reports.py`, `Chatbot Scheduled Report` DocType |
+| Alert engine | `automation/alerts.py`, `Chatbot Alert` DocType |
 | Notifications | `automation/notifications/channels/email.py`, `whatsapp.py`, `slack.py` |
-| Alert engine | `automation/notifications/alerts.py`, `ChatbotAlert` DocType |
-| Scheduled reports | Hooks in `hooks.py`, report templates |
-| Settings | Alert configuration in Chatbot Settings |
+| Dispatcher | `automation/notifications/dispatcher.py` |
+| Hooks | Updated `hooks.py` with scheduler_events |
+| Settings | Alert/report configuration in Chatbot Settings |
 
 **New dependencies:** `slack_sdk` (optional, for Slack integration). Twilio already present.
 
@@ -858,17 +935,19 @@ ai_chatbot/automation/notifications/
 
 ## Phase Summary
 
-| Phase | Focus | Key Deliverable | Dependencies Added |
-|-------|-------|------------------|--------------------|
-| **1** | Foundation | Data layer, multi-company/currency, security fixes | None |
-| **2** | Streaming | Frappe Realtime (Socket.IO) token streaming, enhanced chat UX | None |
-| **3** | CRUD | Create/update/delete ERPNext records via chat | None |
-| **4** | Finance | 20+ finance tools, ECharts integration | echarts (npm) |
-| **5** | HRMS & CRM | Complete HRMS tools, expanded CRM | None |
-| **6** | Agentic RAG | Vector search + multi-agent orchestration + memory system | chromadb, pypdf, python-docx |
-| **7** | IDP | Document extraction → ERPNext records | Pillow, pytesseract (optional) |
-| **8** | Predictive | Forecasting, anomaly detection | pandas, numpy, prophet (optional) |
-| **9** | Automation | Alerts, scheduled reports, notifications | slack_sdk (optional) |
+| Phase | Focus | Status | Key Deliverable | Dependencies Added |
+|-------|-------|--------|------------------|--------------------|
+| **1** | Foundation | ✅ Done | Data layer, multi-company/currency, security fixes | None |
+| **2** | Streaming | ✅ Done | Frappe Realtime token streaming, enhanced chat UX | None |
+| **3** | CRUD | ✅ Done | Create/update/delete ERPNext records via chat | None |
+| **4** | Finance | ✅ Done | 17 finance tools, ECharts integration, multi-color charts | echarts (npm) |
+| **5** | HRMS & CRM | Planned | HRMS tools, expanded CRM with charts | None |
+| **5A** | UX & Accessibility | Planned | Sidebar toggle, voice input, prompt help, multi-charts, data tables | None |
+| **5B** | Enterprise Analytics | Planned | Permissions, dimensions, reports, CFO dashboard, consolidation, config, plugins | None |
+| **6** | Agentic RAG | Planned | Vector search + multi-agent orchestration + memory | chromadb, pypdf, python-docx |
+| **7** | IDP | Planned | File upload, document extraction, data comparison/reconciliation | Pillow, pytesseract (opt), openpyxl |
+| **8** | Predictive | Planned | Forecasting, anomaly detection | pandas, numpy, prophet (opt) |
+| **9** | Automation | Planned | Auto-email, scheduled reports, alerts, notifications | slack_sdk (opt) |
 
 ---
 
@@ -881,25 +960,13 @@ Every tool that queries transactional data follows this pattern:
 ```python
 def get_sales_analytics(from_date=None, to_date=None, company=None):
     """Get sales analytics for a specific company."""
-    if not company:
-        company = frappe.defaults.get_user_default("Company")
-
-    if not company:
-        frappe.throw("Please specify a company or set a default company.")
+    company = get_default_company(company)  # Resolves: passed → user default → global default
 
     filters = {"docstatus": 1, "company": company}
-    if from_date:
-        filters["posting_date"] = [">=", from_date]
-    if to_date:
-        filters["posting_date"] = ["<=", to_date]
+    ...
 
-    # ... query with filters
-
-    return {
-        "company": company,
-        "currency": frappe.get_cached_value("Company", company, "default_currency"),
-        # ... data
-    }
+    return build_currency_response(result, company)
+    # Adds: {"company": company, "currency": "USD"}
 ```
 
 ### Multi-Currency Pattern
@@ -916,10 +983,14 @@ For monetary aggregations, always use base currency fields:
 | Opportunity | `opportunity_amount` | (convert manually using party currency) |
 | Journal Entry | `debit` / `credit` | `debit_in_account_currency` is the foreign; `debit` is base |
 
-When a user asks for data in a specific currency (e.g., "Show sales in EUR"):
-1. Query using `base_*` fields (company currency)
-2. Convert to requested currency using `currency.get_exchange_rate()`
-3. Return both the amount and currency code
+### Parent Company Consolidation (Phase 5B)
+
+When a company is a parent company:
+1. Detect child companies via `frappe.db.get_descendants("Company", parent_company)`
+2. Ask user: include subsidiaries? In which currency?
+3. Execute tool across all companies
+4. Convert to target currency using `get_exchange_rate()`
+5. Aggregate and present consolidated view
 
 ### Company Isolation for RAG (Phase 6)
 
@@ -935,48 +1006,55 @@ Vector store collections are namespaced by company:
 ```
 ai_chatbot/
 ├── core/                          # Phase 1
-│   ├── config.py
-│   ├── constants.py
+│   ├── config.py                  # Updated: Phase 5B (configurable constants)
+│   ├── constants.py               # Updated: Phase 5B (dynamic categories)
 │   ├── exceptions.py
-│   └── logger.py
+│   ├── logger.py
+│   ├── prompts.py                 # Updated: Phase 5B (configurable prompts, dimensions, consolidation)
+│   ├── dimensions.py              # Phase 5B (accounting dimension helpers)
+│   └── consolidation.py           # Phase 5B (parent company consolidation)
 │
-├── data/                          # Phase 1, 3
+├── data/                          # Phase 1, 3, 4
 │   ├── queries.py
 │   ├── analytics.py
 │   ├── currency.py
+│   ├── charts.py                  # Phase 4 (ECharts builders)
 │   ├── operations.py              # Phase 3
 │   └── validators.py              # Phase 3
 │
 ├── api/                           # Phase 1, 2, 3, 7
 │   ├── chat.py
 │   ├── streaming.py               # Phase 2
-│   └── documents.py               # Phase 7
+│   ├── files.py                   # Phase 7 (file upload)
+│   └── documents.py               # Phase 7 (IDP)
 │
 ├── utils/
 │   └── ai_providers.py
 │
-├── tools/                         # Phase 1, 3, 4, 5, 8
-│   ├── registry.py                # Phase 1
+├── tools/                         # Phase 1, 3, 4, 5, 5B, 8
+│   ├── registry.py                # Phase 1, updated: 5B (permissions, plugins)
 │   ├── base.py
+│   ├── crm.py                     # Phase 1, updated: 5
+│   ├── selling.py                 # Phase 1, updated: 4
+│   ├── buying.py                  # Phase 1, updated: 4
+│   ├── stock.py                   # Phase 1, updated: 4
+│   ├── account.py                 # Phase 1
+│   ├── hrms.py                    # Phase 5
+│   ├── reports.py                 # Phase 5B (report data tools)
 │   ├── operations/                # Phase 3
 │   │   ├── create.py
 │   │   ├── update.py
-│   │   └── search.py
-│   ├── analytics/                 # Phase 1 (refactored), 4, 5
-│   │   ├── crm.py
-│   │   ├── selling.py
-│   │   ├── buying.py
-│   │   ├── stock.py
-│   │   ├── accounts.py
-│   │   └── hrms.py               # Phase 5
-│   ├── finance/                   # Phase 4
+│   │   ├── search.py
+│   │   └── reconcile.py           # Phase 7
+│   ├── finance/                   # Phase 4, 5B
 │   │   ├── budget.py
 │   │   ├── ratios.py
 │   │   ├── profitability.py
 │   │   ├── working_capital.py
 │   │   ├── receivables.py
 │   │   ├── payables.py
-│   │   └── cash_flow.py
+│   │   ├── cash_flow.py
+│   │   └── cfo.py                 # Phase 5B (CFO composite reports)
 │   └── predictive/                # Phase 8
 │       ├── demand_forecast.py
 │       ├── sales_forecast.py
@@ -984,39 +1062,56 @@ ai_chatbot/
 │       └── anomaly_detection.py
 │
 ├── ai/                            # Phase 6 (Agentic RAG)
-│   ├── rag/                       # Phase 6 — vector retrieval
+│   ├── rag/
 │   │   ├── embeddings.py
 │   │   ├── vector_store.py
 │   │   ├── chunker.py
 │   │   └── retriever.py
-│   ├── agents/                    # Phase 6 — multi-agent orchestration
+│   ├── agents/
 │   │   ├── base_agent.py
 │   │   ├── orchestrator.py
 │   │   ├── planner_agent.py
 │   │   ├── analyst_agent.py
 │   │   └── document_agent.py
-│   └── memory/                    # Phase 6 — memory system
+│   └── memory/
 │       ├── conversation_memory.py
 │       ├── knowledge_memory.py
 │       └── memory_manager.py
 │
 ├── idp/                           # Phase 7
 │   ├── extractors/
+│   │   ├── base_extractor.py
+│   │   ├── invoice_extractor.py
+│   │   ├── receipt_extractor.py
+│   │   └── generic_extractor.py
 │   ├── validators/
-│   └── mappers/
+│   │   ├── schema_validator.py
+│   │   └── business_rules.py
+│   ├── mappers/
+│   │   ├── base_mapper.py
+│   │   ├── invoice_mapper.py
+│   │   ├── supplier_mapper.py
+│   │   └── item_mapper.py
+│   └── comparison.py              # Phase 7 (data comparison/reconciliation)
 │
 ├── automation/                    # Phase 9
+│   ├── scheduled_reports.py
+│   ├── alerts.py
 │   └── notifications/
 │       ├── channels/
-│       └── alerts.py
+│       │   ├── email.py
+│       │   ├── whatsapp.py
+│       │   └── slack.py
+│       └── dispatcher.py
 │
 ├── chatbot/                       # Frappe DocTypes (expanded across phases)
 │   └── doctype/
-│       ├── chatbot_settings/
+│       ├── chatbot_settings/      # Updated: 5A, 5B (prompts, constants, suggestions)
 │       ├── chatbot_conversation/
-│       ├── chatbot_message/
+│       ├── chatbot_message/       # Updated: 4 (tool_results), 7 (attachments)
 │       ├── chatbot_knowledge_base/    # Phase 6
 │       ├── chatbot_document_queue/    # Phase 7
+│       ├── chatbot_scheduled_report/  # Phase 9
 │       └── chatbot_alert/             # Phase 9
 │
 └── tests/                         # All phases
@@ -1026,29 +1121,32 @@ ai_chatbot/
 
 frontend/src/
 ├── components/
-│   ├── chat/                      # Phase 2
-│   │   ├── ChatHeader.vue
-│   │   ├── ChatMessage.vue
-│   │   ├── ChatInput.vue
-│   │   ├── StreamingMessage.vue   # Phase 2
-│   │   └── AgentThinking.vue      # Phase 6
-│   ├── charts/                    # Phase 4
+│   ├── Sidebar.vue                # Updated: 5A (collapsible)
+│   ├── ChatHeader.vue             # Updated: 5A (sidebar toggle button)
+│   ├── ChatMessage.vue            # Updated: 4 (charts), 5A (data tables)
+│   ├── ChatInput.vue              # Updated: 5A (voice, @mentions), 7 (file upload)
+│   ├── TypingIndicator.vue
+│   ├── PromptSuggestions.vue      # Phase 5A (prompt chips)
+│   ├── charts/                    # Phase 4, 5A
 │   │   ├── EChartRenderer.vue
-│   │   └── ChartMessage.vue
+│   │   ├── ChartMessage.vue       # Updated: 5A (multi-chart)
+│   │   └── DataTable.vue          # Phase 5A (styled tables)
 │   ├── documents/                 # Phase 6
 │   │   ├── DocumentUploader.vue
 │   │   └── DocumentList.vue
-│   └── idp/                       # Phase 7
-│       ├── ExtractionResult.vue
-│       └── MappingPreview.vue
+│   ├── idp/                       # Phase 7
+│   │   ├── ExtractionResult.vue
+│   │   └── MappingPreview.vue
+│   └── chat/
+│       └── AgentThinking.vue      # Phase 6
 ├── pages/
-│   ├── ChatView.vue
+│   ├── ChatView.vue               # Updated: 5A (sidebar toggle, scroll fix)
 │   ├── KnowledgeBaseView.vue      # Phase 6
 │   └── DocumentProcessingView.vue # Phase 7
-├── composables/                   # Phase 2+
-│   ├── useChat.js
-│   └── useStreaming.js            # Phase 2 (Frappe realtime listener)
+├── composables/
+│   ├── useStreaming.js             # Phase 2
+│   ├── useVoiceInput.js           # Phase 5A
+│   └── usePromptHelp.js           # Phase 5A
 └── utils/
-    ├── api.js
-    └── charts.js                  # Phase 4 (ECharts helpers)
+    └── api.js
 ```

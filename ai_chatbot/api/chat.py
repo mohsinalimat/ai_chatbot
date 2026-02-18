@@ -68,7 +68,7 @@ def get_conversation_messages(conversation_id: str) -> dict:
 		messages = frappe.get_all(
 			"Chatbot Message",
 			filters={"conversation": conversation_id},
-			fields=["name", "role", "content", "timestamp", "tokens_used", "tool_calls", "tool_results"],
+			fields=["name", "role", "content", "timestamp", "tokens_used", "tool_calls", "tool_results", "attachments"],
 			order_by="timestamp asc",
 		)
 
@@ -92,6 +92,15 @@ def get_conversation_messages(conversation_id: str) -> dict:
 					)
 				except (json.JSONDecodeError, TypeError):
 					msg["tool_results"] = None
+			if msg.get("attachments"):
+				try:
+					msg["attachments"] = (
+						json.loads(msg["attachments"])
+						if isinstance(msg["attachments"], str)
+						else msg["attachments"]
+					)
+				except (json.JSONDecodeError, TypeError):
+					msg["attachments"] = None
 
 		return {
 			"success": True,
@@ -103,18 +112,24 @@ def get_conversation_messages(conversation_id: str) -> dict:
 
 
 @frappe.whitelist()
-def send_message(conversation_id: str, message: str, stream: bool = False) -> dict:
+def send_message(conversation_id: str, message: str, stream: bool = False, attachments: str = None) -> dict:
 	"""Send a message and get AI response.
 
 	When stream=True, delegates to the streaming API which delivers tokens
 	via frappe.publish_realtime. The HTTP response returns immediately with
 	the stream_id. When stream=False, returns the complete response.
+
+	Args:
+		conversation_id: The conversation document name.
+		message: The user's message text.
+		stream: Whether to use streaming mode.
+		attachments: Optional JSON string of file attachment metadata.
 	"""
 	try:
 		if stream:
 			from ai_chatbot.api.streaming import send_message_streaming
 
-			return send_message_streaming(conversation_id, message)
+			return send_message_streaming(conversation_id, message, attachments=attachments)
 
 		# Validate conversation
 		conversation = frappe.get_doc("Chatbot Conversation", conversation_id)
@@ -122,15 +137,16 @@ def send_message(conversation_id: str, message: str, stream: bool = False) -> di
 			frappe.throw("Unauthorized access to conversation")
 
 		# Save user message
-		frappe.get_doc(
-			{
-				"doctype": "Chatbot Message",
-				"conversation": conversation_id,
-				"role": "user",
-				"content": message,
-				"timestamp": frappe.utils.now(),
-			}
-		).insert()
+		msg_doc = {
+			"doctype": "Chatbot Message",
+			"conversation": conversation_id,
+			"role": "user",
+			"content": message,
+			"timestamp": frappe.utils.now(),
+		}
+		if attachments:
+			msg_doc["attachments"] = attachments
+		frappe.get_doc(msg_doc).insert()
 
 		# Get conversation history
 		history = get_conversation_history(conversation_id)
@@ -154,16 +170,34 @@ def send_message(conversation_id: str, message: str, stream: bool = False) -> di
 
 
 def get_conversation_history(conversation_id: str) -> list[dict]:
-	"""Get conversation history in AI format"""
+	"""Get conversation history in AI format.
+
+	For messages with image attachments, builds multimodal content arrays
+	using the OpenAI Vision format (converted to Claude format by the provider).
+	"""
 	messages = frappe.get_all(
 		"Chatbot Message",
 		filters={"conversation": conversation_id},
-		fields=["role", "content", "tool_calls"],
+		fields=["role", "content", "tool_calls", "attachments"],
 		order_by="timestamp asc",
 	)
 
 	history = []
 	for msg in messages:
+		# Check if user message has image attachments — build vision content
+		if msg.role == "user" and msg.attachments:
+			try:
+				atts = json.loads(msg.attachments) if isinstance(msg.attachments, str) else msg.attachments
+			except (json.JSONDecodeError, TypeError):
+				atts = None
+
+			if atts and any(a.get("is_image") for a in atts):
+				from ai_chatbot.api.files import build_vision_content
+
+				content = build_vision_content(msg.content or "", atts)
+				history.append({"role": msg.role, "content": content})
+				continue
+
 		message_dict = {"role": msg.role, "content": msg.content}
 		history.append(message_dict)
 
@@ -346,3 +380,198 @@ def get_settings() -> dict:
 	except Exception as e:
 		frappe.log_error(f"Error getting settings: {e!s}", "AI Chatbot")
 		return {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
+def get_mention_values(mention_type: str, search_term: str = "", company: str = None) -> dict:
+	"""Return values for @mention autocomplete in chat input.
+
+	Args:
+		mention_type: One of: company, period, cost_center, department, warehouse,
+			customer, item, accounting_dimension
+		search_term: Filter string
+		company: Company context (defaults to user default)
+
+	Returns:
+		dict with success and values list
+	"""
+	try:
+		if not company:
+			company = frappe.defaults.get_user_default("Company")
+
+		if mention_type == "company":
+			filters = {}
+			if search_term:
+				filters["name"] = ["like", f"%{search_term}%"]
+			companies = frappe.get_all(
+				"Company",
+				filters=filters,
+				pluck="name",
+				limit_page_length=20,
+				order_by="name asc",
+			)
+			# Put the user's default company first
+			if company and company in companies:
+				companies.remove(company)
+				companies.insert(0, company)
+			return {"success": True, "values": companies}
+
+		if mention_type == "period":
+			return {"success": True, "values": _get_period_presets(company)}
+
+		# Searchable DocType mentions
+		doctype_map = {
+			"cost_center": "Cost Center",
+			"department": "Department",
+			"warehouse": "Warehouse",
+			"customer": "Customer",
+			"item": "Item",
+		}
+
+		if mention_type in doctype_map:
+			doctype = doctype_map[mention_type]
+			filters = {}
+			if search_term:
+				filters["name"] = ["like", f"%{search_term}%"]
+			# Company filter for company-scoped DocTypes
+			if mention_type in ("cost_center", "department", "warehouse") and company:
+				filters["company"] = company
+
+			values = frappe.get_all(
+				doctype,
+				filters=filters,
+				pluck="name",
+				limit_page_length=20,
+				order_by="name asc",
+			)
+			return {"success": True, "values": values}
+
+		if mention_type == "accounting_dimension":
+			return {"success": True, "values": _get_accounting_dimensions(company, search_term)}
+
+		return {"success": False, "error": f"Unknown mention type: {mention_type}"}
+
+	except Exception as e:
+		frappe.log_error(f"Mention values error: {e!s}", "AI Chatbot")
+		return {"success": False, "error": str(e)}
+
+
+def _get_period_presets(company: str = None) -> list[dict]:
+	"""Return date range presets for @period mention."""
+	from datetime import timedelta
+
+	today = frappe.utils.today()
+	today_date = frappe.utils.getdate(today)
+
+	# This Week (Monday to Sunday)
+	monday = today_date - timedelta(days=today_date.weekday())
+	sunday = monday + timedelta(days=6)
+
+	# This Month
+	month_start = today_date.replace(day=1)
+	if today_date.month == 12:
+		month_end = today_date.replace(year=today_date.year + 1, month=1, day=1) - timedelta(days=1)
+	else:
+		month_end = today_date.replace(month=today_date.month + 1, day=1) - timedelta(days=1)
+
+	# Last Month
+	last_month_end = month_start - timedelta(days=1)
+	last_month_start = last_month_end.replace(day=1)
+
+	presets = [
+		{"label": "This Week", "value": f"{monday} to {sunday}"},
+		{"label": "This Month", "value": f"{month_start} to {month_end}"},
+		{"label": "Last Month", "value": f"{last_month_start} to {last_month_end}"},
+	]
+
+	# Try to get fiscal year info
+	try:
+		from erpnext.accounts.utils import get_fiscal_year
+
+		fy = get_fiscal_year(today, company=company)
+		if fy:
+			fy_start, fy_end = str(fy[1]), str(fy[2])
+
+			# This Quarter
+			quarter_month = ((today_date.month - frappe.utils.getdate(fy_start).month) // 3) * 3
+			q_start_month = frappe.utils.getdate(fy_start).month + quarter_month
+			q_start_year = today_date.year if q_start_month <= 12 else today_date.year + 1
+			if q_start_month > 12:
+				q_start_month -= 12
+			q_start = today_date.replace(year=q_start_year, month=q_start_month, day=1)
+			q_end_month = q_start_month + 2
+			q_end_year = q_start_year
+			if q_end_month > 12:
+				q_end_month -= 12
+				q_end_year += 1
+			if q_end_month == 12:
+				q_end = today_date.replace(year=q_end_year, month=12, day=31)
+			else:
+				q_end = today_date.replace(year=q_end_year, month=q_end_month + 1, day=1) - timedelta(days=1)
+
+			presets.append({"label": "This Quarter", "value": f"{q_start} to {q_end}"})
+			presets.append({"label": "This FY", "value": f"{fy_start} to {fy_end}"})
+
+			# Last FY
+			try:
+				prev_fy_date = frappe.utils.getdate(fy_start) - timedelta(days=1)
+				prev_fy = get_fiscal_year(str(prev_fy_date), company=company)
+				if prev_fy:
+					presets.append({"label": "Last FY", "value": f"{prev_fy[1]} to {prev_fy[2]}"})
+			except Exception:
+				pass
+	except Exception:
+		pass
+
+	return presets
+
+
+def _get_accounting_dimensions(company: str = None, search_term: str = "") -> list[dict]:
+	"""Return available accounting dimensions and their values.
+
+	Uses frappe.get_all("Accounting Dimension") to list configured dimensions,
+	then queries each dimension's document_type for its values.
+	"""
+	try:
+		# Get accounting dimension records directly from the DocType
+		dim_filters = {"disabled": 0}
+		if search_term:
+			dim_filters["label"] = ["like", f"%{search_term}%"]
+
+		dimensions = frappe.get_all(
+			"Accounting Dimension",
+			filters=dim_filters,
+			fields=["name", "label", "document_type", "disabled"],
+			order_by="label asc",
+		)
+
+		results = []
+		for dim in dimensions:
+			doc_type = dim.get("document_type") or dim.get("name")
+			label = dim.get("label") or doc_type
+
+			# Get values for this dimension's document type
+			try:
+				value_filters = {}
+				if company and frappe.get_meta(doc_type).has_field("company"):
+					value_filters["company"] = company
+
+				values = frappe.get_all(
+					doc_type,
+					filters=value_filters,
+					pluck="name",
+					limit_page_length=20,
+					order_by="name asc",
+				)
+			except Exception:
+				values = []
+
+			results.append({
+				"label": label,
+				"description": f"{doc_type} ({len(values)} values)",
+				"values": values,
+			})
+		return results
+	except Exception as e:
+		frappe.log_error(f"Error fetching accounting dimensions: {e}")
+		return []

@@ -1,18 +1,22 @@
 # AI Chatbot — Phase-wise Enhancement Roadmap
 
-## Current State Summary (Post Phase 4)
+## Current State Summary (Post Phase 5A)
 
 The AI Chatbot is a functional Frappe app with:
 
 - **3 DocTypes:** Chatbot Settings (Single), Chatbot Conversation, Chatbot Message
-- **34 tools** across 8 categories: CRM (2), Selling (5), Buying (4), Stock (4), Account (2), Finance (17), HRMS (0 — placeholder), Operations (3 — create/update/search)
-- **2 AI providers:** OpenAI (GPT-4o) and Claude (Sonnet 4.5)
+- **40 tools** across 9 categories: CRM (5), Selling (8), Buying (6), Stock (6), Account (2), Finance (17), HRMS (6), Operations (3 — create/update/search)
+- **2 AI providers:** OpenAI (GPT-4o) and Claude (Sonnet 4.5) with multimodal/Vision support
 - **Streaming:** Real-time token streaming via Frappe Realtime (Socket.IO/WebSocket)
 - **CRUD:** Create, update, search ERPNext records via chat with confirmation pattern
 - **ECharts:** Inline chart rendering (bar, line, pie, horizontal bar, multi-series) with multi-color palette
 - **Multi-company & multi-currency:** All tools use `company` parameter and `base_*` fields
 - **Data layer:** `frappe.qb` Query Builder throughout — no raw SQL
 - **Vue 3 frontend:** Components for chat, streaming, charts, tool calls
+- **File upload:** Image/PDF/document upload with Vision API support (OpenAI & Claude)
+- **Voice I/O:** Speech-to-text input (Web Speech API) and text-to-speech output (SpeechSynthesis)
+- **@Mention autocomplete:** `@company`, `@period`, `@cost_center`, `@department`, `@warehouse`, `@customer`, `@item`, `@accounting_dimension`
+- **Collapsible sidebar:** Toggle with localStorage persistence
 
 ---
 
@@ -47,13 +51,13 @@ Create/update/search tools (`tools/operations/`). Document creation (Lead, Oppor
 
 ---
 
-## Phase 5: HRMS Tools & Enhanced CRM
+## Phase 5: HRMS Tools & Enhanced CRM ✅
 
 **Goal:** Complete the HRMS placeholder and expand CRM capabilities.
 
-### 5.1 HRMS Tools (`ai_chatbot/tools/hrms.py`)
+### 5.1 HRMS Tools (`ai_chatbot/tools/hrms.py`) ✅
 
-Requires ERPNext HRMS module to be installed.
+6 HRMS tools implemented, all with HRMS module detection and ECharts:
 
 - `get_employee_count(company, department=None, status="Active")` — headcount with department breakdown
 - `get_attendance_summary(company, from_date, to_date, department=None)` — attendance stats (present, absent, leave, half-day)
@@ -62,151 +66,110 @@ Requires ERPNext HRMS module to be installed.
 - `get_department_wise_salary(company, month=None)` — salary by department with pie chart
 - `get_employee_turnover(company, from_date, to_date)` — joining vs leaving rate with trend chart
 
-All tools:
-- Check if HRMS module is installed before executing (`frappe.get_installed_apps()`)
-- Respect `company` parameter
-- Payroll tools use `base_*` amounts for multi-currency
-- Return ECharts options where applicable
+### 5.2 Enhanced CRM Tools (`ai_chatbot/tools/crm.py`) ✅
 
-### 5.2 Enhanced CRM Tools (`ai_chatbot/tools/crm.py`)
-
-Expand the existing 2 tools:
+5 CRM tools (3 new + 2 updated with ECharts):
 
 - `get_lead_conversion_rate(company, from_date, to_date)` — lead-to-opportunity conversion rate with funnel chart
 - `get_lead_source_analysis(company, from_date, to_date)` — leads by source with pie chart
-- `get_sales_funnel(company, from_date, to_date)` — lead → opportunity → quotation → order pipeline with funnel visualization
-- `get_customer_acquisition_cost(company, from_date, to_date)` — CAC if campaign data available
+- `get_sales_funnel(company, from_date, to_date)` — lead → opportunity → quotation → order pipeline
 - Existing tools (`get_lead_statistics`, `get_opportunity_pipeline`) updated with ECharts
 
-### 5.3 Settings
+### 5.3 Settings ✅
 
-- Add `enable_hrms_tools` flag to Chatbot Settings
-- Conditional on HRMS module installation (graceful fallback)
-
-### 5.4 Deliverables
-
-| Item | Files |
-|------|-------|
-| HRMS tools | `tools/hrms.py` (full implementation) |
-| CRM tools | Updated `tools/crm.py` with 4 new tools + charts |
-| Settings | `enable_hrms_tools` flag, conditional on module installation |
-
-**New dependencies:** None (queries HRMS doctypes if installed).
+- `enable_hrms_tools` flag in Chatbot Settings, conditional on HRMS module installation
 
 ---
 
-## Phase 5A: UX & Accessibility
+## Phase 5A: UX & Accessibility ✅
 
-**Goal:** Enhance the chat interface with usability features — sidebar toggle, voice input, prompt suggestions, and improved chart/table rendering. All changes are frontend-only or frontend-heavy.
+**Goal:** Enhance the chat interface with file upload, voice communication, @mention autocomplete, prompt suggestions, and collapsible sidebar. Mix of backend and frontend changes.
 
-### 5A.1 Sidebar Toggle
+### 5A.1 File Upload & Vision API ✅
 
-**Files:** `frontend/src/pages/ChatView.vue`, `frontend/src/components/Sidebar.vue`
+**New file:** `ai_chatbot/api/files.py`
+**Modified:** `api/chat.py`, `api/streaming.py`, `utils/ai_providers.py`, `frontend/src/utils/api.js`
 
-- Add `sidebarCollapsed` ref in ChatView.vue
-- Toggle button (hamburger icon) in ChatHeader
-- When collapsed: sidebar width → 0 or narrow icon strip, chat area → full width
-- Persist preference in `localStorage`
-- Smooth CSS transition (width animation)
-- Mobile responsive: sidebar as overlay on small screens
+- **Upload endpoint:** `upload_chat_file()` — validates ownership, MIME type (images, PDF, DOCX, CSV, XLSX, TXT), 10MB limit, saves to Frappe File DocType
+- **Vision API support:** Image attachments sent to OpenAI/Claude Vision for analysis
+  - OpenAI format as canonical internal representation (`image_url` content parts)
+  - Claude provider converts to Claude's `image` + `base64` source format in `_convert_messages_to_claude()`
+- **Upload-then-send (two-phase):** Files uploaded first to Frappe, metadata (not binary) passed with message — works with streaming's `frappe.enqueue`
+- **Frontend composable:** `useFileUpload.js` — file selection, validation, preview URLs, pending file management
+- **ChatInput UI:** Paperclip button, file chips with preview thumbnails, drag-and-drop overlay, max 5 files
 
-```
-┌──────┬──────────────────────────┐     ┌──────────────────────────────────┐
-│      │                          │     │ ≡                                │
-│ Side │    Chat Area             │ →   │         Chat Area (full)         │
-│ bar  │                          │     │                                  │
-└──────┴──────────────────────────┘     └──────────────────────────────────┘
-```
+### 5A.2 Voice Communication ✅
 
-### 5A.2 Voice Communication
-
-**Files:** `frontend/src/components/ChatInput.vue`, `frontend/src/composables/useVoiceInput.js`
+**New files:** `frontend/src/composables/useVoiceInput.js`, `frontend/src/composables/useVoiceOutput.js`
+**Modified:** `frontend/src/components/ChatInput.vue`, `frontend/src/pages/ChatView.vue`, `frontend/src/components/ChatMessage.vue`
 
 **Speech-to-Text (input):**
-- New composable `useVoiceInput.js` using Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`)
-- Microphone button in ChatInput (icon: `Mic` from lucide-vue-next)
-- Visual feedback: pulsing animation when recording, waveform indicator
-- Auto-insert transcribed text into input field
-- Language auto-detection from browser locale
-- Graceful fallback message for unsupported browsers
+- `useVoiceInput.js` composable using Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`)
+- `continuous=true`, `interimResults=true`, `lang=navigator.language`
+- Microphone button with pulsing red animation when recording (`animate-recording`)
+- Interim transcript displayed in real-time below input text
+- Graceful degradation: mic button hidden in unsupported browsers (Firefox)
 
-**Text-to-Speech (output — optional):**
-- Speaker button on assistant messages using `SpeechSynthesis` API
-- Read aloud the response text (strip markdown formatting first)
-- Play/pause/stop controls
+**Text-to-Speech (output):**
+- `useVoiceOutput.js` composable using `SpeechSynthesis` API
+- Markdown stripped before speaking (headers, bold, code, images, links, tables)
+- **Auto-speak:** When user submits via voice, AI response auto-speaks after streaming completes
+- **Manual "Listen" button** on all assistant messages (Volume2/VolumeX icons)
 
-```javascript
-// useVoiceInput.js — composable
-export function useVoiceInput() {
-    const isListening = ref(false)
-    const transcript = ref("")
-    const isSupported = ref('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+### 5A.3 @Mention Autocomplete & Prompt Suggestions ✅
 
-    function startListening() { ... }
-    function stopListening() { ... }
+**Backend:** `get_mention_values()` endpoint in `api/chat.py`
+**Frontend:** Built into `ChatInput.vue` (no separate component needed)
 
-    return { isListening, transcript, isSupported, startListening, stopListening }
-}
-```
+**@Mention Autocomplete (8 categories):**
+- `@company` → inserts user's default company name
+- `@period` → sub-menu: "This Week", "This Month", "Last Month", "This Quarter", "This FY", "Last FY"
+- `@cost_center` → searches cost centers (company-scoped)
+- `@department` → searches departments (company-scoped)
+- `@warehouse` → searches warehouses (company-scoped)
+- `@customer` → searches customers
+- `@item` → searches items
+- `@accounting_dimension` → dynamically discovers active accounting dimensions via ERPNext's `get_accounting_dimensions()` API
 
-### 5A.3 User Prompt Help (@mentions & Suggestions)
-
-**Files:** `frontend/src/components/ChatInput.vue`, `frontend/src/components/PromptSuggestions.vue`, `frontend/src/composables/usePromptHelp.js`
-
-**@Mention Autocomplete:**
-- When user types `@`, show dropdown with context helpers:
-  - `@company` → inserts user's default company name
-  - `@period` → shows sub-menu: "This Month", "Last Month", "This Quarter", "This FY", "Last FY"
-  - `@cost_center` → lists available cost centers
-  - `@department` → lists departments
-  - `@warehouse` → lists warehouses
-  - `@customer` → searches customers
-  - `@item` → searches items
-- Dropdown positioned above the input (like Discord/Slack mentions)
-- Fetch options via lightweight Frappe API calls (`frappe.call` with `frappe.get_list`)
-- Search/filter as user types after `@`
-- On selection, replace `@token` with actual value in the input
+**Implementation details:**
+- Two-level drill-down: categories → values (fetched from backend)
+- Keyboard navigation (arrow keys, Enter to select, Escape to close)
+- Dropdown positioned above textarea
+- Triggered on `@` at start of input or after whitespace
 
 **Prompt Suggestions:**
-- Show suggestion chips above the input for new conversations:
-  - "Show me this month's sales summary"
-  - "What are the top 10 customers by revenue?"
-  - "Show accounts receivable aging"
-  - "What is the current cash flow?"
-- Configurable suggestions stored in Chatbot Settings (JSON field `prompt_suggestions`)
-- Fade out after first message is sent
+- 4 default suggestion chips shown for new conversations (no messages)
+- Click auto-inserts and sends
+- Hidden after first message
 
-### 5A.4 Multi Charts & Styled Tables
+### 5A.4 Collapsible Sidebar ✅
 
-**Files:** `frontend/src/components/charts/ChartMessage.vue`, `frontend/src/components/charts/DataTable.vue`
+**Modified:** `ChatView.vue`, `ChatHeader.vue`
 
-**Multiple Charts per Response:**
-- Tools can return a `charts` array (list of ECharts option objects) instead of single `echart_option`
-- Frontend iterates and renders each chart in sequence
-- Backend `build_dashboard_charts()` helper for composite responses (e.g., CFO dashboard returns 4 charts)
-- Horizontal layout for 2 small charts side-by-side, vertical stack for more
-
-**Styled Data Tables:**
-- New `DataTable.vue` component for structured tabular data
-- Tools return `table_data` object: `{"headers": [...], "rows": [...], "footer": [...]}`
-- Renders as styled HTML table with:
-  - Alternating row colors
-  - Right-aligned numbers with currency formatting
-  - Sortable columns (click header)
-  - Compact vs expanded view toggle
-- Falls back to AI-generated markdown tables when `table_data` is not present
+- `PanelLeftClose`/`PanelLeftOpen` toggle button in ChatHeader
+- `sidebarCollapsed` state persisted in `localStorage` (`ai_chatbot_sidebar`)
+- Vue `<transition>` with width + opacity animation
+- Chat area expands to full width when sidebar collapsed
 
 ### 5A.5 Deliverables
 
-| Item | Files |
-|------|-------|
-| Sidebar toggle | Updated `ChatView.vue`, `Sidebar.vue`, `ChatHeader.vue` |
-| Voice input | `composables/useVoiceInput.js`, updated `ChatInput.vue` |
-| Prompt help | `composables/usePromptHelp.js`, `PromptSuggestions.vue`, updated `ChatInput.vue` |
-| Multi charts | Updated `ChartMessage.vue`, `charts.py` (`build_dashboard_charts`) |
-| Data tables | `components/charts/DataTable.vue`, updated `ChatMessage.vue` |
+| Item | Files | Status |
+|------|-------|--------|
+| File upload API | `api/files.py` (new) | ✅ |
+| Attachments in chat/streaming | Updated `api/chat.py`, `api/streaming.py` | ✅ |
+| Multimodal AI providers | Updated `utils/ai_providers.py` | ✅ |
+| File upload composable | `composables/useFileUpload.js` (new) | ✅ |
+| Voice input composable | `composables/useVoiceInput.js` (new) | ✅ |
+| Voice output composable | `composables/useVoiceOutput.js` (new) | ✅ |
+| API client updates | Updated `utils/api.js` (uploadFile, getMentionValues) | ✅ |
+| ChatInput rewrite | Updated `components/ChatInput.vue` (file, voice, @mentions, suggestions) | ✅ |
+| @Mention backend | `get_mention_values()` in `api/chat.py` | ✅ |
+| ChatView orchestrator | Updated `pages/ChatView.vue` (payload, upload, voice, sidebar) | ✅ |
+| ChatMessage updates | Updated `components/ChatMessage.vue` (attachments, speaker) | ✅ |
+| Sidebar toggle | Updated `components/ChatHeader.vue` | ✅ |
+| Tailwind animations | Updated `tailwind.config.js` (recording pulse) | ✅ |
 
-**New dependencies:** None (Web Speech API is a browser built-in).
+**New dependencies:** None (Web Speech API, File API, SpeechSynthesis are browser-native).
 
 ---
 
@@ -689,16 +652,18 @@ frontend/src/
 
 **Goal:** Extract data from uploaded documents (invoices, receipts, POs) and create ERPNext records. Includes file upload capability, data comparison, and reconciliation.
 
-### 7.1 File Upload Infrastructure
+### 7.1 File Upload Infrastructure (Completed in Phase 5A)
 
-**Files:** `ai_chatbot/api/files.py` (new), updated `ChatInput.vue`, updated `chatbot_message.json`
+File upload and Vision API support was implemented in Phase 5A:
+- `api/files.py` — upload endpoint, base64 encoding, vision content builder
+- Frontend: file picker + drag-and-drop in ChatInput (accept PDF, images, Excel, CSV, DOCX, TXT)
+- Frappe File DocType storage with `is_private=True`
+- Image attachments sent to LLM Vision API (OpenAI & Claude)
+- Non-image attachments annotated as text in message context
 
-- Frontend: file picker + drag-and-drop in ChatInput (accept PDF, images, Excel, CSV)
-- Upload via `frappe.handler.upload_file` API
-- Store file reference on Chatbot Message (`attachments` JSON field — already exists)
-- Pass file context to the AI: file name, type, size, and extracted text preview
-- For images: pass to LLM Vision API for analysis
-- For PDFs/Excel: extract text/tables and include in the prompt context
+**Phase 7 extends this with:**
+- PDF/Excel text extraction for prompt context
+- Structured data extraction from documents
 
 ### 7.2 Document Extraction (`ai_chatbot/idp/`)
 
@@ -941,11 +906,11 @@ ai_chatbot/automation/notifications/
 | **2** | Streaming | ✅ Done | Frappe Realtime token streaming, enhanced chat UX | None |
 | **3** | CRUD | ✅ Done | Create/update/delete ERPNext records via chat | None |
 | **4** | Finance | ✅ Done | 17 finance tools, ECharts integration, multi-color charts | echarts (npm) |
-| **5** | HRMS & CRM | Planned | HRMS tools, expanded CRM with charts | None |
-| **5A** | UX & Accessibility | Planned | Sidebar toggle, voice input, prompt help, multi-charts, data tables | None |
+| **5** | HRMS & CRM | ✅ Done | 6 HRMS tools, 5 CRM tools with charts | None |
+| **5A** | UX & Accessibility | ✅ Done | File upload + Vision API, voice I/O, @mentions, sidebar toggle, prompt suggestions | None |
 | **5B** | Enterprise Analytics | Planned | Permissions, dimensions, reports, CFO dashboard, consolidation, config, plugins | None |
 | **6** | Agentic RAG | Planned | Vector search + multi-agent orchestration + memory | chromadb, pypdf, python-docx |
-| **7** | IDP | Planned | File upload, document extraction, data comparison/reconciliation | Pillow, pytesseract (opt), openpyxl |
+| **7** | IDP | Planned | Document extraction, data comparison/reconciliation (file upload done in 5A) | Pillow, pytesseract (opt), openpyxl |
 | **8** | Predictive | Planned | Forecasting, anomaly detection | pandas, numpy, prophet (opt) |
 | **9** | Automation | Planned | Auto-email, scheduled reports, alerts, notifications | slack_sdk (opt) |
 
@@ -1022,14 +987,14 @@ ai_chatbot/
 │   ├── operations.py              # Phase 3
 │   └── validators.py              # Phase 3
 │
-├── api/                           # Phase 1, 2, 3, 7
-│   ├── chat.py
-│   ├── streaming.py               # Phase 2
-│   ├── files.py                   # Phase 7 (file upload)
+├── api/                           # Phase 1, 2, 3, 5A, 7
+│   ├── chat.py                    # Updated: 5A (attachments, @mention endpoint)
+│   ├── streaming.py               # Phase 2, updated: 5A (attachments, vision content)
+│   ├── files.py                   # Phase 5A (file upload, vision content builder)
 │   └── documents.py               # Phase 7 (IDP)
 │
 ├── utils/
-│   └── ai_providers.py
+│   └── ai_providers.py            # Updated: 5A (Claude multimodal/vision content conversion)
 │
 ├── tools/                         # Phase 1, 3, 4, 5, 5B, 8
 │   ├── registry.py                # Phase 1, updated: 5B (permissions, plugins)
@@ -1121,12 +1086,11 @@ ai_chatbot/
 
 frontend/src/
 ├── components/
-│   ├── Sidebar.vue                # Updated: 5A (collapsible)
+│   ├── Sidebar.vue                # Updated: 5A (collapsible via parent CSS)
 │   ├── ChatHeader.vue             # Updated: 5A (sidebar toggle button)
-│   ├── ChatMessage.vue            # Updated: 4 (charts), 5A (data tables)
-│   ├── ChatInput.vue              # Updated: 5A (voice, @mentions), 7 (file upload)
+│   ├── ChatMessage.vue            # Updated: 4 (charts), 5A (attachments, speaker button)
+│   ├── ChatInput.vue              # Updated: 5A (file upload, voice, @mentions, suggestions)
 │   ├── TypingIndicator.vue
-│   ├── PromptSuggestions.vue      # Phase 5A (prompt chips)
 │   ├── charts/                    # Phase 4, 5A
 │   │   ├── EChartRenderer.vue
 │   │   ├── ChartMessage.vue       # Updated: 5A (multi-chart)
@@ -1140,13 +1104,16 @@ frontend/src/
 │   └── chat/
 │       └── AgentThinking.vue      # Phase 6
 ├── pages/
-│   ├── ChatView.vue               # Updated: 5A (sidebar toggle, scroll fix)
+│   ├── ChatView.vue               # Updated: 5A (sidebar toggle, payload handling, voice output, suggestions)
 │   ├── KnowledgeBaseView.vue      # Phase 6
 │   └── DocumentProcessingView.vue # Phase 7
 ├── composables/
 │   ├── useStreaming.js             # Phase 2
-│   ├── useVoiceInput.js           # Phase 5A
-│   └── usePromptHelp.js           # Phase 5A
+│   ├── useSocket.js               # Phase 2
+│   ├── useVoiceInput.js           # Phase 5A (speech-to-text)
+│   ├── useVoiceOutput.js          # Phase 5A (text-to-speech)
+│   └── useFileUpload.js           # Phase 5A (file selection/validation/preview)
 └── utils/
-    └── api.js
+    ├── api.js                     # Updated: 5A (uploadFile, getMentionValues, attachments)
+    └── markdown.js                # Phase 2
 ```

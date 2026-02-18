@@ -1,20 +1,100 @@
 <template>
   <div class="border-t border-gray-200 bg-white px-6 py-4">
     <div class="max-w-4xl mx-auto">
+      <!-- Prompt Suggestions (shown for new conversations) -->
+      <div v-if="showSuggestions" class="mb-3 flex flex-wrap gap-2">
+        <button
+          v-for="(suggestion, idx) in suggestions"
+          :key="idx"
+          type="button"
+          @click="handleSuggestionClick(suggestion)"
+          class="px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 transition-colors border border-blue-200"
+        >
+          {{ suggestion }}
+        </button>
+      </div>
+
       <form @submit.prevent="handleSubmit" class="relative">
+        <!-- Attachment Preview Strip -->
+        <div v-if="hasFiles" class="mb-2 flex flex-wrap gap-2 p-2 bg-gray-50 rounded-xl border border-gray-200">
+          <div
+            v-for="file in pendingFiles"
+            :key="file.id"
+            class="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-gray-200 text-xs shadow-sm"
+          >
+            <img
+              v-if="file.previewUrl"
+              :src="file.previewUrl"
+              :alt="file.name"
+              class="w-8 h-8 rounded object-cover"
+            />
+            <FileText v-else :size="16" class="text-gray-500" />
+            <span class="truncate max-w-[120px]">{{ file.name }}</span>
+            <span class="text-gray-400">{{ formatFileSize(file.size) }}</span>
+            <button
+              type="button"
+              @click="removeFile(file.id)"
+              class="ml-1 p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <X :size="14" />
+            </button>
+          </div>
+        </div>
+
         <div class="flex items-end gap-3">
-          <!-- Textarea -->
-          <div class="flex-1 relative">
+          <!-- File Upload Button -->
+          <button
+            type="button"
+            @click="triggerFileInput"
+            :disabled="disabled && !isStreaming"
+            class="h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center border border-gray-300 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Attach files (images, PDF, documents)"
+          >
+            <Paperclip :size="20" class="text-gray-500" />
+          </button>
+          <input
+            ref="fileInputRef"
+            type="file"
+            multiple
+            :accept="acceptTypes"
+            class="hidden"
+            @change="handleFileSelect"
+          />
+
+          <!-- Textarea with drag-and-drop -->
+          <div
+            class="flex-1 relative"
+            @dragover.prevent="isDragOver = true"
+            @dragleave="isDragOver = false"
+            @drop.prevent="handleDrop"
+          >
+            <!-- Drag overlay -->
+            <div
+              v-if="isDragOver"
+              class="absolute inset-0 bg-blue-50 border-2 border-dashed border-blue-400 rounded-xl flex items-center justify-center text-blue-600 font-medium z-10"
+            >
+              Drop files here
+            </div>
+
             <textarea
               ref="textareaRef"
               v-model="inputValue"
               @keydown="handleKeydown"
+              @input="handleInput"
               :disabled="disabled && !isStreaming"
               placeholder="Type your message... (Shift+Enter for new line)"
               rows="1"
               class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
               style="min-height: 52px; max-height: 200px;"
             ></textarea>
+
+            <!-- Interim voice transcript -->
+            <div
+              v-if="isListening && interimTranscript"
+              class="absolute bottom-2 left-4 text-sm text-gray-400 italic pointer-events-none"
+            >
+              {{ interimTranscript }}
+            </div>
 
             <!-- Character count -->
             <div
@@ -23,7 +103,51 @@
             >
               {{ inputValue.length }}
             </div>
+
+            <!-- @Mention Dropdown -->
+            <div
+              v-if="showMentionDropdown"
+              ref="mentionDropdownRef"
+              class="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto z-20"
+            >
+              <div
+                v-for="(option, idx) in filteredMentionOptions"
+                :key="option.value || option.label"
+                @click="selectMention(option)"
+                @mouseenter="mentionSelectedIndex = idx"
+                :class="[
+                  'px-4 py-2.5 cursor-pointer flex items-center gap-3 text-sm transition-colors',
+                  idx === mentionSelectedIndex ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
+                ]"
+              >
+                <AtSign :size="14" class="text-gray-400 flex-shrink-0" />
+                <div>
+                  <div class="font-medium">{{ option.label }}</div>
+                  <div v-if="option.description" class="text-xs text-gray-400">{{ option.description }}</div>
+                </div>
+              </div>
+              <div v-if="filteredMentionOptions.length === 0" class="px-4 py-3 text-sm text-gray-400">
+                No matches found
+              </div>
+            </div>
           </div>
+
+          <!-- Microphone Button -->
+          <button
+            v-if="voiceSupported"
+            type="button"
+            @click="toggleVoice"
+            :disabled="disabled && !isStreaming"
+            :class="[
+              'h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center transition-all',
+              isListening
+                ? 'bg-red-500 hover:bg-red-600 animate-recording'
+                : 'border border-gray-300 bg-white hover:bg-gray-50'
+            ]"
+            :title="isListening ? 'Stop recording' : 'Voice input'"
+          >
+            <Mic :size="20" :class="isListening ? 'text-white' : 'text-gray-500'" />
+          </button>
 
           <!-- Stop Button (shown during streaming) -->
           <button
@@ -40,12 +164,17 @@
           <button
             v-else
             type="submit"
-            :disabled="disabled || !inputValue.trim()"
+            :disabled="disabled || (!inputValue.trim() && !hasFiles)"
             class="h-[52px] px-6 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 font-medium"
           >
             <Send :size="18" />
             Send
           </button>
+        </div>
+
+        <!-- Error Display -->
+        <div v-if="uploadError || voiceError" class="mt-1 text-xs text-red-500">
+          {{ uploadError || voiceError }}
         </div>
 
         <!-- Hints -->
@@ -54,6 +183,10 @@
             <span class="flex items-center gap-1">
               <Zap :size="14" />
               ERPNext tools enabled
+            </span>
+            <span v-if="voiceSupported" class="flex items-center gap-1">
+              <Mic :size="12" />
+              Voice input
             </span>
           </div>
           <span>
@@ -66,8 +199,11 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue'
-import { Send, Zap, Square } from 'lucide-vue-next'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { Send, Zap, Square, Paperclip, Mic, X, FileText, AtSign } from 'lucide-vue-next'
+import { useVoiceInput } from '../composables/useVoiceInput'
+import { useFileUpload, ALLOWED_TYPES } from '../composables/useFileUpload'
+import { chatAPI } from '../utils/api'
 
 const props = defineProps({
   disabled: Boolean,
@@ -75,27 +211,359 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showSuggestions: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['send', 'stop'])
+const emit = defineEmits(['send', 'stop', 'voice-start'])
 
 const inputValue = ref('')
 const textareaRef = ref(null)
+const fileInputRef = ref(null)
+const mentionDropdownRef = ref(null)
+const isDragOver = ref(false)
+const isVoiceMessage = ref(false)
 
-const handleSubmit = () => {
-  if (inputValue.value.trim() && !props.disabled) {
-    emit('send', inputValue.value)
-    inputValue.value = ''
-    resetTextareaHeight()
+// Prompt suggestions
+const suggestions = [
+  "Show me this month's sales summary",
+  'What are the top 10 customers by revenue?',
+  'Show accounts receivable aging',
+  'How many active employees do we have?',
+]
+
+// Voice input (auto-send after 2s silence)
+const {
+  isListening,
+  transcript,
+  interimTranscript,
+  error: voiceError,
+  isSupported: voiceSupported,
+  silenceTimeout,
+  startListening: startVoice,
+  stopListening: stopVoice,
+  resetTranscript,
+} = useVoiceInput({ autoSendDelay: 2000 })
+
+// File upload
+const {
+  pendingFiles,
+  uploadError,
+  hasFiles,
+  addFiles,
+  removeFile,
+  clearFiles,
+  formatFileSize,
+} = useFileUpload()
+
+const acceptTypes = computed(() => ALLOWED_TYPES.join(','))
+
+// @Mention autocomplete state
+const showMentionDropdown = ref(false)
+const mentionQuery = ref('')
+const mentionStartPos = ref(-1)
+const mentionSelectedIndex = ref(0)
+const mentionOptions = ref([])
+const mentionSubOptions = ref([])
+const mentionMode = ref('categories') // 'categories' or 'values'
+
+// Base mention categories
+const mentionCategories = [
+  { label: 'Company', description: 'Select company', value: '@company', type: 'company' },
+  { label: 'Period', description: 'Date range presets', value: '@period', type: 'period' },
+  { label: 'Cost Center', description: 'Search cost centers', value: '@cost_center', type: 'cost_center' },
+  { label: 'Department', description: 'Search departments', value: '@department', type: 'department' },
+  { label: 'Warehouse', description: 'Search warehouses', value: '@warehouse', type: 'warehouse' },
+  { label: 'Customer', description: 'Search customers', value: '@customer', type: 'customer' },
+  { label: 'Item', description: 'Search items', value: '@item', type: 'item' },
+  { label: 'Accounting Dimension', description: 'Accounting dimensions', value: '@accounting_dimension', type: 'accounting_dimension' },
+]
+
+const filteredMentionOptions = computed(() => {
+  if (mentionMode.value === 'values') {
+    return mentionSubOptions.value
+  }
+  const query = mentionQuery.value.toLowerCase()
+  if (!query) return mentionCategories
+  return mentionCategories.filter(
+    (c) =>
+      c.label.toLowerCase().includes(query) ||
+      c.type.includes(query) ||
+      (c.description && c.description.toLowerCase().includes(query))
+  )
+})
+
+// When voice transcript updates, set input value
+watch(transcript, (newVal) => {
+  if (newVal) {
+    inputValue.value = newVal
+    isVoiceMessage.value = true
+    nextTick(() => adjustTextareaHeight())
+  }
+})
+
+// Auto-send when silence timeout fires (user stopped speaking)
+watch(silenceTimeout, (timedOut) => {
+  if (timedOut && inputValue.value.trim()) {
+    stopVoice()
+    nextTick(() => handleSubmit())
+  }
+})
+
+const toggleVoice = () => {
+  if (isListening.value) {
+    stopVoice()
+  } else {
+    resetTranscript()
+    isVoiceMessage.value = false
+    emit('voice-start')
+    startVoice()
   }
 }
 
+const triggerFileInput = () => {
+  fileInputRef.value?.click()
+}
+
+const handleFileSelect = (event) => {
+  addFiles(event.target.files)
+  event.target.value = ''
+}
+
+const handleDrop = (event) => {
+  isDragOver.value = false
+  if (event.dataTransfer?.files) {
+    addFiles(event.dataTransfer.files)
+  }
+}
+
+const handleSuggestionClick = (suggestion) => {
+  inputValue.value = suggestion
+  nextTick(() => handleSubmit())
+}
+
+const handleSubmit = () => {
+  if ((!inputValue.value.trim() && !hasFiles.value) || props.disabled) return
+
+  // Stop voice if still listening
+  if (isListening.value) {
+    stopVoice()
+  }
+
+  // Close mention dropdown
+  closeMentionDropdown()
+
+  // Build structured payload
+  const payload = {
+    message: inputValue.value,
+    attachments: pendingFiles.value.map((f) => ({
+      file: f.file,
+      name: f.name,
+      type: f.type,
+      size: f.size,
+      previewUrl: f.previewUrl,
+    })),
+    voiceInput: isVoiceMessage.value,
+  }
+
+  emit('send', payload)
+
+  // Reset
+  inputValue.value = ''
+  clearFiles()
+  isVoiceMessage.value = false
+  resetTextareaHeight()
+}
+
 const handleKeydown = (event) => {
+  // @Mention dropdown navigation
+  if (showMentionDropdown.value) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      mentionSelectedIndex.value = Math.min(
+        mentionSelectedIndex.value + 1,
+        filteredMentionOptions.value.length - 1
+      )
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      mentionSelectedIndex.value = Math.max(mentionSelectedIndex.value - 1, 0)
+      return
+    }
+    if (event.key === 'Enter' && filteredMentionOptions.value.length > 0) {
+      event.preventDefault()
+      selectMention(filteredMentionOptions.value[mentionSelectedIndex.value])
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeMentionDropdown()
+      return
+    }
+  }
+
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     handleSubmit()
   }
 }
+
+const handleInput = () => {
+  // Detect @mention trigger
+  const textarea = textareaRef.value
+  if (!textarea) return
+
+  const cursorPos = textarea.selectionStart
+  const textBefore = inputValue.value.slice(0, cursorPos)
+
+  // Find the last @ before cursor
+  const lastAtIndex = textBefore.lastIndexOf('@')
+
+  if (lastAtIndex !== -1) {
+    // Check that @ is at start of input or preceded by whitespace
+    const charBefore = lastAtIndex > 0 ? textBefore[lastAtIndex - 1] : ' '
+    if (charBefore === ' ' || charBefore === '\n' || lastAtIndex === 0) {
+      const query = textBefore.slice(lastAtIndex + 1)
+      // Only show dropdown if query doesn't contain spaces (single token)
+      if (!query.includes(' ')) {
+        mentionQuery.value = query
+        mentionStartPos.value = lastAtIndex
+        mentionSelectedIndex.value = 0
+        mentionMode.value = 'categories'
+        showMentionDropdown.value = true
+        return
+      }
+    }
+  }
+
+  closeMentionDropdown()
+}
+
+async function selectMention(option) {
+  if (mentionMode.value === 'categories') {
+    if (option.type === 'period') {
+      // Period shows date range sub-menu
+      try {
+        const result = await chatAPI.getMentionValues('period')
+        if (result.success && result.values) {
+          mentionSubOptions.value = result.values.map((v) => ({
+            label: v.label,
+            description: v.value,
+            insertValue: v.value,
+          }))
+          mentionMode.value = 'values'
+          mentionSelectedIndex.value = 0
+        }
+      } catch {
+        closeMentionDropdown()
+      }
+      return
+    }
+
+    if (option.type === 'accounting_dimension') {
+      // Accounting dimensions show dimension types first, then values on selection
+      try {
+        const result = await chatAPI.getMentionValues('accounting_dimension', '')
+        if (result.success && result.values) {
+          mentionSubOptions.value = result.values.map((dim) => ({
+            label: dim.label,
+            description: dim.description || '',
+            // If dimension has values, store them for drill-down
+            _dimensionValues: dim.values || [],
+            _isDimension: true,
+            insertValue: null, // Don't insert yet — drill into values
+          }))
+          mentionMode.value = 'values'
+          mentionSelectedIndex.value = 0
+        }
+      } catch {
+        closeMentionDropdown()
+      }
+      return
+    }
+
+    // For all other types (company, cost_center, department, warehouse, customer, item),
+    // fetch values as a list and let user pick
+    try {
+      const result = await chatAPI.getMentionValues(option.type, '')
+      if (result.success && result.values) {
+        mentionSubOptions.value = result.values.map((v) => ({
+          label: typeof v === 'string' ? v : v.label || v.name,
+          description: typeof v === 'string' ? null : v.description || null,
+          insertValue: typeof v === 'string' ? v : v.value || v.name || v.label,
+        }))
+        mentionMode.value = 'values'
+        mentionSelectedIndex.value = 0
+      }
+    } catch {
+      closeMentionDropdown()
+    }
+    return
+  }
+
+  // Values mode — check if this is a dimension type that needs drill-down
+  if (option._isDimension && option._dimensionValues?.length > 0) {
+    // Drill into the dimension's actual values
+    mentionSubOptions.value = option._dimensionValues.map((v) => ({
+      label: typeof v === 'string' ? v : v.label || v.name,
+      description: option.label,
+      insertValue: typeof v === 'string' ? v : v.value || v.name || v.label,
+    }))
+    mentionSelectedIndex.value = 0
+    return
+  }
+
+  // Insert the selected value
+  if (option.insertValue) {
+    insertMentionValue(option.insertValue)
+  } else {
+    insertMentionValue(option.label)
+  }
+}
+
+function insertMentionValue(value) {
+  const before = inputValue.value.slice(0, mentionStartPos.value)
+  const after = inputValue.value.slice(textareaRef.value?.selectionStart || inputValue.value.length)
+  inputValue.value = before + value + ' ' + after
+  closeMentionDropdown()
+  nextTick(() => {
+    const newPos = before.length + value.length + 1
+    textareaRef.value?.setSelectionRange(newPos, newPos)
+    textareaRef.value?.focus()
+    adjustTextareaHeight()
+  })
+}
+
+function closeMentionDropdown() {
+  showMentionDropdown.value = false
+  mentionQuery.value = ''
+  mentionStartPos.value = -1
+  mentionSelectedIndex.value = 0
+  mentionMode.value = 'categories'
+  mentionSubOptions.value = []
+}
+
+// Close mention dropdown on click outside
+function handleClickOutside(event) {
+  if (
+    mentionDropdownRef.value &&
+    !mentionDropdownRef.value.contains(event.target) &&
+    textareaRef.value !== event.target
+  ) {
+    closeMentionDropdown()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 const adjustTextareaHeight = () => {
   const textarea = textareaRef.value

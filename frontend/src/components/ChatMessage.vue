@@ -15,6 +15,24 @@
           </div>
           <div class="flex-1">
             <p class="whitespace-pre-wrap">{{ message.content }}</p>
+
+            <!-- Attachment chips -->
+            <div v-if="parsedAttachments.length > 0" class="mt-2 flex flex-wrap gap-2">
+              <div
+                v-for="(att, idx) in parsedAttachments"
+                :key="idx"
+                class="flex items-center gap-2 px-3 py-1.5 bg-white bg-opacity-20 rounded-lg text-xs"
+              >
+                <img
+                  v-if="att.is_image && att.file_url"
+                  :src="att.file_url"
+                  :alt="att.file_name"
+                  class="w-8 h-8 rounded object-cover"
+                />
+                <FileText v-else :size="16" />
+                <span class="truncate max-w-[120px]">{{ att.file_name }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -82,11 +100,21 @@
               </div>
             </div>
 
-            <!-- Token Usage -->
-            <div v-if="message.tokens_used" class="mt-3">
-              <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
+            <!-- Token Usage & Voice -->
+            <div class="mt-3 flex items-center gap-3">
+              <span v-if="message.tokens_used" class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
                 {{ message.tokens_used }} tokens
               </span>
+              <button
+                v-if="voiceOutput.isSupported.value"
+                @click="voiceOutput.toggle(message.content)"
+                class="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                :title="voiceOutput.isSpeaking.value ? 'Stop speaking' : 'Read aloud'"
+              >
+                <VolumeX v-if="voiceOutput.isSpeaking.value" :size="14" class="text-blue-600" />
+                <Volume2 v-else :size="14" />
+                <span>{{ voiceOutput.isSpeaking.value ? 'Stop' : 'Listen' }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -97,15 +125,32 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Wrench, PenSquare } from 'lucide-vue-next'
+import { Wrench, PenSquare, Volume2, VolumeX, FileText } from 'lucide-vue-next'
 import { renderMarkdown } from '../utils/markdown'
+import { useVoiceOutput } from '../composables/useVoiceOutput'
 import ChartMessage from './charts/ChartMessage.vue'
+
+const voiceOutput = useVoiceOutput()
 
 const props = defineProps({
   message: {
     type: Object,
     required: true,
   },
+})
+
+// Parse attachments from message (JSON string or array)
+const parsedAttachments = computed(() => {
+  if (!props.message.attachments) return []
+  let atts = props.message.attachments
+  if (typeof atts === 'string') {
+    try {
+      atts = JSON.parse(atts)
+    } catch {
+      return []
+    }
+  }
+  return Array.isArray(atts) ? atts : []
 })
 
 const messageClasses = computed(() => {

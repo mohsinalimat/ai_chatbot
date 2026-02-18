@@ -4,6 +4,7 @@
  */
 
 const API_BASE = '/api/method/ai_chatbot.api.chat'
+const FILES_API_BASE = '/api/method/ai_chatbot.api.files'
 
 class ChatAPI {
   constructor() {
@@ -116,11 +117,12 @@ class ChatAPI {
   /**
    * Send a message and get AI response (non-streaming)
    */
-  async sendMessage(conversationId, message, stream = false) {
+  async sendMessage(conversationId, message, stream = false, attachments = null) {
     return this.request('send_message', {
       conversation_id: conversationId,
       message,
       stream,
+      attachments: attachments ? JSON.stringify(attachments) : null,
     })
   }
 
@@ -129,11 +131,50 @@ class ChatAPI {
    * The actual response tokens arrive via Socket.IO realtime events.
    * This HTTP call returns immediately with a stream_id.
    */
-  async sendMessageStreaming(conversationId, message) {
+  async sendMessageStreaming(conversationId, message, attachments = null) {
     return this.request('send_message', {
       conversation_id: conversationId,
       message,
       stream: true,
+      attachments: attachments ? JSON.stringify(attachments) : null,
+    })
+  }
+
+  /**
+   * Upload a file for a chat conversation.
+   * Uses multipart/form-data instead of JSON.
+   */
+  async uploadFile(conversationId, file) {
+    const token = await this.getToken()
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('conversation_id', conversationId)
+
+    const response = await fetch(`${FILES_API_BASE}.upload_chat_file`, {
+      method: 'POST',
+      headers: {
+        'X-Frappe-CSRF-Token': token || '',
+      },
+      credentials: 'include',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status}`)
+    }
+
+    const result = await response.json()
+    return result.message || result
+  }
+
+  /**
+   * Get values for @mention autocomplete.
+   */
+  async getMentionValues(mentionType, searchTerm = '', company = null) {
+    return this.request('get_mention_values', {
+      mention_type: mentionType,
+      search_term: searchTerm,
+      company,
     })
   }
 

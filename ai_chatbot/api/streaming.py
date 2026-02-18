@@ -21,7 +21,7 @@ TOKEN_BUFFER_SIZE = 20  # characters
 
 
 @frappe.whitelist()
-def send_message_streaming(conversation_id: str, message: str) -> dict:
+def send_message_streaming(conversation_id: str, message: str, attachments: str = None) -> dict:
 	"""Send a message and stream the AI response via frappe.publish_realtime.
 
 	Saves the user message, then enqueues a background job that streams
@@ -31,6 +31,7 @@ def send_message_streaming(conversation_id: str, message: str) -> dict:
 	Args:
 		conversation_id: The conversation document name.
 		message: The user's message text.
+		attachments: Optional JSON string of file attachment metadata.
 
 	Returns:
 		dict with success status and stream_id.
@@ -45,15 +46,16 @@ def send_message_streaming(conversation_id: str, message: str) -> dict:
 		stream_id = str(uuid.uuid4())[:8]
 
 		# Save user message immediately (before enqueue)
-		frappe.get_doc(
-			{
-				"doctype": "Chatbot Message",
-				"conversation": conversation_id,
-				"role": "user",
-				"content": message,
-				"timestamp": frappe.utils.now(),
-			}
-		).insert()
+		msg_doc = {
+			"doctype": "Chatbot Message",
+			"conversation": conversation_id,
+			"role": "user",
+			"content": message,
+			"timestamp": frappe.utils.now(),
+		}
+		if attachments:
+			msg_doc["attachments"] = attachments
+		frappe.get_doc(msg_doc).insert()
 		frappe.db.commit()
 
 		# Enqueue the streaming job so HTTP response returns immediately.
@@ -387,16 +389,34 @@ def _publish(event, message, user=None):
 
 
 def _get_conversation_history(conversation_id: str) -> list[dict]:
-	"""Get conversation history in AI message format."""
+	"""Get conversation history in AI message format.
+
+	For messages with image attachments, builds multimodal content arrays
+	using the OpenAI Vision format (converted to Claude format by the provider).
+	"""
 	messages = frappe.get_all(
 		"Chatbot Message",
 		filters={"conversation": conversation_id},
-		fields=["role", "content", "tool_calls"],
+		fields=["role", "content", "tool_calls", "attachments"],
 		order_by="timestamp asc",
 	)
 
 	history = []
 	for msg in messages:
+		# Check if user message has image attachments — build vision content
+		if msg.role == "user" and msg.attachments:
+			try:
+				atts = json.loads(msg.attachments) if isinstance(msg.attachments, str) else msg.attachments
+			except (json.JSONDecodeError, TypeError):
+				atts = None
+
+			if atts and any(a.get("is_image") for a in atts):
+				from ai_chatbot.api.files import build_vision_content
+
+				content = build_vision_content(msg.content or "", atts)
+				history.append({"role": msg.role, "content": content})
+				continue
+
 		message_dict = {"role": msg.role, "content": msg.content}
 		history.append(message_dict)
 

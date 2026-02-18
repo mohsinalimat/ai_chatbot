@@ -1,21 +1,34 @@
 <template>
   <div class="flex h-screen overflow-hidden">
-    <!-- Sidebar -->
-    <Sidebar
-      :conversations="conversations"
-      :current-conversation="currentConversation"
-      @new-chat="handleNewChat"
-      @select-conversation="handleSelectConversation"
-      @delete-conversation="handleDeleteConversation"
-    />
+    <!-- Sidebar (collapsible) -->
+    <transition
+      enter-active-class="transition-all duration-300 ease-in-out"
+      leave-active-class="transition-all duration-300 ease-in-out"
+      enter-from-class="w-0 opacity-0"
+      enter-to-class="w-80 opacity-100"
+      leave-from-class="w-80 opacity-100"
+      leave-to-class="w-0 opacity-0"
+    >
+      <div v-show="!sidebarCollapsed" class="w-80 flex-shrink-0 overflow-hidden">
+        <Sidebar
+          :conversations="conversations"
+          :current-conversation="currentConversation"
+          @new-chat="handleNewChat"
+          @select-conversation="handleSelectConversation"
+          @delete-conversation="handleDeleteConversation"
+        />
+      </div>
+    </transition>
 
     <!-- Main Chat Area -->
-    <div class="flex-1 flex flex-col">
+    <div class="flex-1 flex flex-col min-w-0">
       <!-- Header -->
       <ChatHeader
         :conversation="currentConversation"
         :ai-provider="selectedProvider"
+        :sidebar-collapsed="sidebarCollapsed"
         @change-provider="handleChangeProvider"
+        @toggle-sidebar="toggleSidebar"
       />
 
       <!-- Messages Area -->
@@ -90,8 +103,10 @@
       <ChatInput
         :disabled="isLoading || !currentConversation"
         :is-streaming="isStreaming"
+        :show-suggestions="showSuggestions"
         @send="handleSendMessage"
         @stop="handleStopGeneration"
+        @voice-start="warmupTTS"
       />
     </div>
   </div>
@@ -108,6 +123,7 @@ import { chatAPI } from '../utils/api'
 import { renderMarkdown } from '../utils/markdown'
 import { useStreaming } from '../composables/useStreaming'
 import { useSocket } from '../composables/useSocket'
+import { useVoiceOutput } from '../composables/useVoiceOutput'
 
 const conversations = ref([])
 const currentConversation = ref(null)
@@ -116,6 +132,21 @@ const isLoading = ref(false)
 const selectedProvider = ref('OpenAI')
 const messagesContainer = ref(null)
 const streamingEnabled = ref(true)
+
+// Sidebar toggle (persisted in localStorage)
+const sidebarCollapsed = ref(localStorage.getItem('ai_chatbot_sidebar') === 'collapsed')
+
+const toggleSidebar = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  localStorage.setItem('ai_chatbot_sidebar', sidebarCollapsed.value ? 'collapsed' : 'expanded')
+}
+
+// Voice output (TTS for auto-speak after voice input)
+const { speak: speakResponse, isSupported: ttsSupported, warmup: warmupTTS } = useVoiceOutput()
+const lastMessageWasVoice = ref(false)
+
+// Show prompt suggestions when conversation has no messages
+const showSuggestions = computed(() => messages.value.length === 0)
 
 // Streaming composable
 const {
@@ -226,15 +257,46 @@ const loadMessages = async (conversationId) => {
   }
 }
 
-const handleSendMessage = async (content) => {
-  if (!currentConversation.value || !content.trim()) return
+const handleSendMessage = async (payload) => {
+  // Accept structured payload: { message, attachments, voiceInput }
+  const message = typeof payload === 'string' ? payload : payload.message
+  const attachments = typeof payload === 'string' ? [] : (payload.attachments || [])
+  const voiceInput = typeof payload === 'string' ? false : (payload.voiceInput || false)
+
+  if (!currentConversation.value || (!message.trim() && attachments.length === 0)) return
+
+  // Track whether this was a voice message (for auto-speak)
+  lastMessageWasVoice.value = voiceInput
+
+  // Upload files first (if any)
+  let uploadedAttachments = null
+  if (attachments.length > 0) {
+    try {
+      const uploadResults = await Promise.all(
+        attachments.map((att) =>
+          chatAPI.uploadFile(currentConversation.value.name, att.file)
+        )
+      )
+      uploadedAttachments = uploadResults.filter((r) => r.success).map((r) => ({
+        file_url: r.file_url,
+        file_name: r.file_name,
+        mime_type: r.mime_type,
+        size: r.size,
+        is_image: r.is_image,
+      }))
+    } catch (error) {
+      console.error('File upload error:', error)
+      // Continue sending message without attachments
+    }
+  }
 
   // Add user message optimistically
   const userMessage = {
     _tempId: `temp_${Date.now()}`,
     role: 'user',
-    content: content,
+    content: message,
     timestamp: new Date().toISOString(),
+    attachments: uploadedAttachments,
   }
   messages.value.push(userMessage)
   await nextTick()
@@ -253,7 +315,8 @@ const handleSendMessage = async (content) => {
       // Tokens arrive via Socket.IO realtime events.
       const response = await chatAPI.sendMessageStreaming(
         currentConversation.value.name,
-        content
+        message,
+        uploadedAttachments
       )
 
       if (!response.success) {
@@ -268,17 +331,26 @@ const handleSendMessage = async (content) => {
       // Non-streaming fallback
       const response = await chatAPI.sendMessage(
         currentConversation.value.name,
-        content
+        message,
+        false,
+        uploadedAttachments
       )
 
       if (response.success) {
+        const assistantContent = response.message
         messages.value.push({
           _tempId: `temp_resp_${Date.now()}`,
           role: 'assistant',
-          content: response.message,
+          content: assistantContent,
           timestamp: new Date().toISOString(),
           tokens_used: response.tokens_used,
         })
+
+        // Auto-speak if this was a voice-initiated message
+        if (lastMessageWasVoice.value && ttsSupported.value && assistantContent) {
+          setTimeout(() => speakResponse(assistantContent), 100)
+          lastMessageWasVoice.value = false
+        }
       }
 
       isLoading.value = false
@@ -344,11 +416,26 @@ const formatToolName = (name) => {
 // When streaming ends, reload messages to get the persisted version
 watch(isStreaming, async (newVal, oldVal) => {
   if (oldVal && !newVal && currentConversation.value) {
-    // Stream just ended
+    // Capture content before any resets — streamingContent may be cleared later
+    const finalContent = streamingContent.value
+    const wasVoice = lastMessageWasVoice.value
+
     isLoading.value = false
     await loadMessages(currentConversation.value.name)
     await loadConversations()
     resetStreaming()
+
+    // Auto-speak after stream ends (voice input only).
+    // Uses setTimeout(0) to ensure this runs outside the synchronous
+    // reactive update — some browsers block speechSynthesis.speak()
+    // if called during a microtask/promise chain.
+    if (wasVoice && ttsSupported.value && finalContent) {
+      setTimeout(() => {
+        speakResponse(finalContent)
+      }, 100)
+      lastMessageWasVoice.value = false
+    }
+
     // Force scroll after reload — use setTimeout to wait for charts/images to render
     await nextTick()
     scrollToBottom(true)

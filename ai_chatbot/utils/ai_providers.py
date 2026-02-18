@@ -401,7 +401,29 @@ class ClaudeProvider(AIProvider):
 					)
 				claude_messages.append({"role": "assistant", "content": content})
 			else:
-				claude_messages.append({"role": msg["role"], "content": msg.get("content", "")})
+				content = msg.get("content", "")
+				if isinstance(content, list):
+					# Multi-modal content (vision) — convert from OpenAI to Claude format
+					claude_content = []
+					for part in content:
+						if part.get("type") == "text":
+							claude_content.append({"type": "text", "text": part["text"]})
+						elif part.get("type") == "image_url":
+							# Extract base64 from data URL: "data:image/jpeg;base64,/9j/..."
+							data_url = part["image_url"]["url"]
+							header, b64_data = data_url.split(",", 1)
+							media_type = header.split(":")[1].split(";")[0]
+							claude_content.append({
+								"type": "image",
+								"source": {
+									"type": "base64",
+									"media_type": media_type,
+									"data": b64_data,
+								},
+							})
+					claude_messages.append({"role": "user", "content": claude_content})
+				else:
+					claude_messages.append({"role": msg["role"], "content": content})
 		return claude_messages
 
 	def _extract_system_message(self, messages):

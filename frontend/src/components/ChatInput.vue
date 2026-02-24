@@ -1,28 +1,15 @@
 <!-- Copyright (c) 2026, Sanjay Kumar and contributors -->
 <!-- For license information, please see license.txt -->
 <template>
-  <div class="border-t border-gray-200 bg-white px-6 py-4">
+  <div class="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
     <div class="max-w-4xl mx-auto">
-      <!-- Prompt Suggestions (shown for new conversations) -->
-      <div v-if="showSuggestions" class="mb-3 flex flex-wrap gap-2">
-        <button
-          v-for="(suggestion, idx) in suggestions"
-          :key="idx"
-          type="button"
-          @click="handleSuggestionClick(suggestion)"
-          class="px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 transition-colors border border-blue-200"
-        >
-          {{ suggestion }}
-        </button>
-      </div>
-
       <form @submit.prevent="handleSubmit" class="relative">
         <!-- Attachment Preview Strip -->
-        <div v-if="hasFiles" class="mb-2 flex flex-wrap gap-2 p-2 bg-gray-50 rounded-xl border border-gray-200">
+        <div v-if="hasFiles" class="mb-2 flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
           <div
             v-for="file in pendingFiles"
             :key="file.id"
-            class="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-gray-200 text-xs shadow-sm"
+            class="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-xs shadow-sm"
           >
             <img
               v-if="file.previewUrl"
@@ -30,8 +17,8 @@
               :alt="file.name"
               class="w-8 h-8 rounded object-cover"
             />
-            <FileText v-else :size="16" class="text-gray-500" />
-            <span class="truncate max-w-[120px]">{{ file.name }}</span>
+            <FileText v-else :size="16" class="text-gray-500 dark:text-gray-400" />
+            <span class="truncate max-w-[120px] dark:text-gray-200">{{ file.name }}</span>
             <span class="text-gray-400">{{ formatFileSize(file.size) }}</span>
             <button
               type="button"
@@ -49,10 +36,10 @@
             type="button"
             @click="triggerFileInput"
             :disabled="disabled && !isStreaming"
-            class="h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center border border-gray-300 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            class="h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Attach files (images, PDF, documents)"
           >
-            <Paperclip :size="20" class="text-gray-500" />
+            <Paperclip :size="20" class="text-gray-500 dark:text-gray-400" />
           </button>
           <input
             ref="fileInputRef"
@@ -73,7 +60,7 @@
             <!-- Drag overlay -->
             <div
               v-if="isDragOver"
-              class="absolute inset-0 bg-blue-50 border-2 border-dashed border-blue-400 rounded-xl flex items-center justify-center text-blue-600 font-medium z-10"
+              class="absolute inset-0 bg-blue-50 dark:bg-blue-900/30 border-2 border-dashed border-blue-400 dark:border-blue-500 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 font-medium z-10"
             >
               Drop files here
             </div>
@@ -86,7 +73,7 @@
               :disabled="disabled && !isStreaming"
               placeholder="Type your message... (Shift+Enter for new line)"
               rows="1"
-              class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
+              class="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all"
               style="min-height: 52px; max-height: 200px;"
             ></textarea>
 
@@ -110,7 +97,7 @@
             <div
               v-if="showMentionDropdown"
               ref="mentionDropdownRef"
-              class="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto z-20"
+              class="absolute bottom-full left-0 right-0 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-64 overflow-y-auto z-20"
             >
               <div
                 v-for="(option, idx) in filteredMentionOptions"
@@ -119,7 +106,7 @@
                 @mouseenter="mentionSelectedIndex = idx"
                 :class="[
                   'px-4 py-2.5 cursor-pointer flex items-center gap-3 text-sm transition-colors',
-                  idx === mentionSelectedIndex ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
+                  idx === mentionSelectedIndex ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-200'
                 ]"
               >
                 <AtSign :size="14" class="text-gray-400 flex-shrink-0" />
@@ -144,11 +131,11 @@
               'h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center transition-all',
               isListening
                 ? 'bg-red-500 hover:bg-red-600 animate-recording'
-                : 'border border-gray-300 bg-white hover:bg-gray-50'
+                : 'border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
             ]"
             :title="isListening ? 'Stop recording' : 'Voice input'"
           >
-            <Mic :size="20" :class="isListening ? 'text-white' : 'text-gray-500'" />
+            <Mic :size="20" :class="isListening ? 'text-white' : 'text-gray-500 dark:text-gray-400'" />
           </button>
 
           <!-- Stop Button (shown during streaming) -->
@@ -156,10 +143,10 @@
             v-if="isStreaming"
             type="button"
             @click="$emit('stop')"
-            class="h-[52px] px-6 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-all duration-200 flex items-center gap-2 font-medium"
+            class="h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-all duration-200"
+            title="Stop generating"
           >
             <Square :size="16" />
-            Stop
           </button>
 
           <!-- Send Button (shown when not streaming) -->
@@ -167,33 +154,16 @@
             v-else
             type="submit"
             :disabled="disabled || (!inputValue.trim() && !hasFiles)"
-            class="h-[52px] px-6 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 font-medium"
+            class="h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed transition-all duration-200"
+            title="Send message"
           >
             <Send :size="18" />
-            Send
           </button>
         </div>
 
         <!-- Error Display -->
         <div v-if="uploadError || voiceError" class="mt-1 text-xs text-red-500">
           {{ uploadError || voiceError }}
-        </div>
-
-        <!-- Hints -->
-        <div class="mt-2 flex items-center justify-between text-xs text-gray-500">
-          <div class="flex items-center gap-4">
-            <span class="flex items-center gap-1">
-              <Zap :size="14" />
-              ERPNext tools enabled
-            </span>
-            <span v-if="voiceSupported" class="flex items-center gap-1">
-              <Mic :size="12" />
-              Voice input
-            </span>
-          </div>
-          <span>
-            Press Enter to send, Shift+Enter for new line
-          </span>
         </div>
       </form>
     </div>
@@ -202,7 +172,7 @@
 
 <script setup>
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
-import { Send, Zap, Square, Paperclip, Mic, X, FileText, AtSign } from 'lucide-vue-next'
+import { Send, Square, Paperclip, Mic, X, FileText, AtSign } from 'lucide-vue-next'
 import { useVoiceInput } from '../composables/useVoiceInput'
 import { useFileUpload, ALLOWED_TYPES } from '../composables/useFileUpload'
 import { chatAPI } from '../utils/api'
@@ -210,10 +180,6 @@ import { chatAPI } from '../utils/api'
 const props = defineProps({
   disabled: Boolean,
   isStreaming: {
-    type: Boolean,
-    default: false,
-  },
-  showSuggestions: {
     type: Boolean,
     default: false,
   },
@@ -227,14 +193,6 @@ const fileInputRef = ref(null)
 const mentionDropdownRef = ref(null)
 const isDragOver = ref(false)
 const isVoiceMessage = ref(false)
-
-// Prompt suggestions
-const suggestions = [
-  "Show me this month's sales summary",
-  'What are the top 10 customers by revenue?',
-  'Show accounts receivable aging',
-  'How many active employees do we have?',
-]
 
 // Voice input (auto-send after 2s silence)
 const {
@@ -341,11 +299,6 @@ const handleDrop = (event) => {
   }
 }
 
-const handleSuggestionClick = (suggestion) => {
-  inputValue.value = suggestion
-  nextTick(() => handleSubmit())
-}
-
 const handleSubmit = () => {
   if ((!inputValue.value.trim() && !hasFiles.value) || props.disabled) return
 
@@ -447,7 +400,6 @@ const handleInput = () => {
 async function selectMention(option) {
   if (mentionMode.value === 'categories') {
     if (option.type === 'period') {
-      // Period shows date range sub-menu
       try {
         const result = await chatAPI.getMentionValues('period')
         if (result.success && result.values) {
@@ -466,17 +418,15 @@ async function selectMention(option) {
     }
 
     if (option.type === 'accounting_dimension') {
-      // Accounting dimensions show dimension types first, then values on selection
       try {
         const result = await chatAPI.getMentionValues('accounting_dimension', '')
         if (result.success && result.values) {
           mentionSubOptions.value = result.values.map((dim) => ({
             label: dim.label,
             description: dim.description || '',
-            // If dimension has values, store them for drill-down
             _dimensionValues: dim.values || [],
             _isDimension: true,
-            insertValue: null, // Don't insert yet — drill into values
+            insertValue: null,
           }))
           mentionMode.value = 'values'
           mentionSelectedIndex.value = 0
@@ -487,8 +437,6 @@ async function selectMention(option) {
       return
     }
 
-    // For all other types (company, cost_center, department, warehouse, customer, item),
-    // fetch values as a list and let user pick
     try {
       const result = await chatAPI.getMentionValues(option.type, '')
       if (result.success && result.values) {
@@ -508,7 +456,6 @@ async function selectMention(option) {
 
   // Values mode — check if this is a dimension type that needs drill-down
   if (option._isDimension && option._dimensionValues?.length > 0) {
-    // Drill into the dimension's actual values
     mentionSubOptions.value = option._dimensionValues.map((v) => ({
       label: typeof v === 'string' ? v : v.label || v.name,
       description: option.label,

@@ -2,36 +2,26 @@
 <!-- For license information, please see license.txt -->
 <template>
   <div class="flex h-screen overflow-hidden">
-    <!-- Sidebar (collapsible) -->
-    <transition
-      enter-active-class="transition-all duration-300 ease-in-out"
-      leave-active-class="transition-all duration-300 ease-in-out"
-      enter-from-class="w-0 opacity-0"
-      enter-to-class="w-80 opacity-100"
-      leave-from-class="w-80 opacity-100"
-      leave-to-class="w-0 opacity-0"
-    >
-      <div v-show="!sidebarCollapsed" class="w-80 flex-shrink-0 overflow-hidden">
-        <Sidebar
-          :conversations="conversations"
-          :current-conversation="currentConversation"
-          @new-chat="handleNewChat"
-          @select-conversation="handleSelectConversation"
-          @delete-conversation="handleDeleteConversation"
-        />
-      </div>
-    </transition>
+    <!-- Sidebar (always visible: collapsed=icon strip, expanded=full) -->
+    <div class="flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden">
+      <Sidebar
+        :conversations="conversations"
+        :current-conversation="currentConversation"
+        :selected-provider="selectedProvider"
+        :sidebar-collapsed="sidebarCollapsed"
+        :search-results="searchResults"
+        :is-searching="isSearching"
+        @new-chat="handleNewChat"
+        @select-conversation="handleSelectConversation"
+        @delete-conversation="handleDeleteConversation"
+        @toggle-sidebar="toggleSidebar"
+        @change-provider="handleChangeProvider"
+        @search="handleSearch"
+      />
+    </div>
 
     <!-- Main Chat Area -->
     <div class="flex-1 flex flex-col min-w-0">
-      <!-- Header -->
-      <ChatHeader
-        :conversation="currentConversation"
-        :ai-provider="selectedProvider"
-        :sidebar-collapsed="sidebarCollapsed"
-        @change-provider="handleChangeProvider"
-        @toggle-sidebar="toggleSidebar"
-      />
 
       <!-- Empty state: centered greeting + input -->
       <div
@@ -40,17 +30,16 @@
       >
         <div class="text-center mb-8">
           <img :src="logoSvg" alt="AI Chatbot" class="w-16 h-16 mx-auto mb-4" />
-          <h1 class="text-2xl font-semibold text-gray-800 mb-2">
+          <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100 mb-2">
             Hello, {{ userInfo.fullname || 'there' }}!
           </h1>
-          <p class="text-gray-500">How can I help you today?</p>
+          <p class="text-gray-500 dark:text-gray-400">How can I help you today?</p>
         </div>
 
         <div class="w-full max-w-2xl">
           <ChatInput
             :disabled="isLoading || !currentConversation"
             :is-streaming="isStreaming"
-            :show-suggestions="showSuggestions"
             @send="handleSendMessage"
             @stop="handleStopGeneration"
             @voice-start="warmupTTS"
@@ -74,8 +63,8 @@
 
           <!-- Streaming Message (live tokens) -->
           <div v-if="isStreaming && streamingContent" class="flex justify-start">
-            <div class="max-w-3xl rounded-2xl px-6 py-4 shadow-sm bg-white border border-gray-200">
-              <div class="text-gray-800">
+            <div class="max-w-[85%] lg:max-w-5xl rounded-2xl px-6 py-4 shadow-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+              <div class="text-gray-800 dark:text-gray-200">
                 <div class="flex items-start gap-3">
                   <img
                     :src="logoSvg"
@@ -83,12 +72,18 @@
                     class="w-8 h-8 rounded-full flex-shrink-0"
                   />
                   <div class="flex-1">
+                    <!-- Process step during streaming -->
+                    <div v-if="processStep" class="text-xs text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
+                      <div class="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      {{ processStep }}
+                    </div>
+
                     <!-- Tool calls in progress -->
                     <div v-if="streamToolCalls.length > 0" class="mb-3">
                       <div
                         v-for="(tc, idx) in streamToolCalls"
                         :key="idx"
-                        class="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg mb-2"
+                        class="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg mb-2"
                       >
                         <div
                           v-if="tc.status === 'executing'"
@@ -101,7 +96,7 @@
                         >
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                         </svg>
-                        <span class="text-sm text-blue-800">
+                        <span class="text-sm text-blue-800 dark:text-blue-300">
                           {{ formatToolName(tc.name) }}
                           <span v-if="tc.status === 'executing'" class="text-blue-500">...</span>
                         </span>
@@ -125,8 +120,8 @@
 
           <!-- Typing indicator: shown while waiting for response (before streaming tokens arrive) -->
           <div v-if="isLoading && !streamingContent" class="flex justify-start">
-            <div class="bg-white rounded-2xl px-6 py-4 shadow-sm border border-gray-200 max-w-3xl">
-              <TypingIndicator />
+            <div class="bg-white dark:bg-gray-800 rounded-2xl px-6 py-4 shadow-sm border border-gray-200 dark:border-gray-700 max-w-[85%] lg:max-w-5xl">
+              <TypingIndicator :process-step="processStep" />
             </div>
           </div>
         </div>
@@ -135,7 +130,6 @@
         <ChatInput
           :disabled="isLoading || !currentConversation"
           :is-streaming="isStreaming"
-          :show-suggestions="false"
           @send="handleSendMessage"
           @stop="handleStopGeneration"
           @voice-start="warmupTTS"
@@ -148,7 +142,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import Sidebar from '../components/Sidebar.vue'
-import ChatHeader from '../components/ChatHeader.vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import ChatInput from '../components/ChatInput.vue'
 import TypingIndicator from '../components/TypingIndicator.vue'
@@ -178,12 +171,33 @@ const toggleSidebar = () => {
   localStorage.setItem('ai_chatbot_sidebar', sidebarCollapsed.value ? 'collapsed' : 'expanded')
 }
 
+// Search state
+const searchResults = ref([])
+const isSearching = ref(false)
+
+const handleSearch = async (query) => {
+  if (!query.trim()) {
+    searchResults.value = []
+    isSearching.value = false
+    return
+  }
+  if (query.trim().length < 2) return
+  isSearching.value = true
+  try {
+    const response = await chatAPI.searchConversations(query)
+    if (response.success) {
+      searchResults.value = response.conversations
+    }
+  } catch (error) {
+    console.error('Search error:', error)
+  } finally {
+    isSearching.value = false
+  }
+}
+
 // Voice output (TTS for auto-speak after voice input)
 const { speak: speakResponse, isSupported: ttsSupported, warmup: warmupTTS } = useVoiceOutput()
 const lastMessageWasVoice = ref(false)
-
-// Show prompt suggestions when conversation has no messages
-const showSuggestions = computed(() => messages.value.length === 0)
 
 // Empty state: no messages and not currently loading/streaming
 const hasNoMessages = computed(() =>
@@ -195,6 +209,7 @@ const {
   streamingContent,
   isStreaming,
   toolCalls: streamToolCalls,
+  processStep,
   streamError,
   startListening,
   stopListening,
@@ -474,9 +489,6 @@ watch(isStreaming, async (newVal, oldVal) => {
     resetStreaming()
 
     // Auto-speak after stream ends (voice input only).
-    // Uses setTimeout(0) to ensure this runs outside the synchronous
-    // reactive update — some browsers block speechSynthesis.speak()
-    // if called during a microtask/promise chain.
     if (wasVoice && ttsSupported.value && finalContent) {
       setTimeout(() => {
         speakResponse(finalContent)
@@ -484,7 +496,7 @@ watch(isStreaming, async (newVal, oldVal) => {
       lastMessageWasVoice.value = false
     }
 
-    // Force scroll after reload — use setTimeout to wait for charts/images to render
+    // Force scroll after reload
     await nextTick()
     scrollToBottom(true)
     setTimeout(() => scrollToBottom(true), 300)

@@ -181,6 +181,13 @@ class ChatAPI {
   }
 
   /**
+   * Search conversations by title or message content
+   */
+  async searchConversations(query, limit = 20) {
+    return this.request('search_conversations', { query, limit })
+  }
+
+  /**
    * Delete a conversation
    */
   async deleteConversation(conversationId) {

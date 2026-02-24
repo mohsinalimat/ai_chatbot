@@ -101,6 +101,8 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 			user=user,
 		)
 
+		_publish_process_step(conversation_id, stream_id, "Preparing context...", user)
+
 		# Get conversation history and provider
 		history = _get_conversation_history(conversation_id)
 
@@ -110,6 +112,8 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 
 		# Optimize history (trim + compress tool results)
 		history = optimize_history(history)
+
+		_publish_process_step(conversation_id, stream_id, "Communicating with LLM...", user)
 
 		provider = get_ai_provider(ai_provider)
 		tools = get_all_tools_schema()
@@ -124,6 +128,8 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 			stream_id=stream_id,
 			user=user,
 		)
+
+		_publish_process_step(conversation_id, stream_id, "Saving response...", user)
 
 		# Save assistant message to database
 		frappe.get_doc(
@@ -265,6 +271,9 @@ def _stream_with_tools(
 
 		# Execute each tool and add results
 		for tc in round_tool_calls:
+			tool_display = tc["name"].replace("_", " ").title()
+			_publish_process_step(conversation_id, stream_id, f"Executing {tool_display}...", user)
+
 			_publish(
 				"ai_chat_tool_call",
 				{
@@ -301,6 +310,8 @@ def _stream_with_tools(
 					"tool_call_id": tc["id"],
 				}
 			)
+
+		_publish_process_step(conversation_id, stream_id, "Processing results...", user)
 
 		# Continue streaming with tool results in history
 	else:
@@ -402,6 +413,19 @@ def _publish(event, message, user=None):
 		event,
 		message=message,
 		user=user or frappe.session.user,
+	)
+
+
+def _publish_process_step(conversation_id, stream_id, step, user):
+	"""Publish a process step indicator to the frontend."""
+	_publish(
+		"ai_chat_process_step",
+		{
+			"conversation_id": conversation_id,
+			"stream_id": stream_id,
+			"step": step,
+		},
+		user=user,
 	)
 
 

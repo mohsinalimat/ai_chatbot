@@ -1,13 +1,13 @@
 # AI Chatbot — Phase-wise Enhancement Roadmap
 
-## Current State Summary (Post Phase 6)
+## Current State Summary (Post Phase 6A)
 
 The AI Chatbot is a functional Frappe app with:
 
 - **4 DocTypes:** Chatbot Settings (Single), Chatbot Conversation, Chatbot Message, Chatbot Token Usage
 - **47+ tools** across 10 categories: CRM (5), Selling (8), Buying (6), Stock (6), Account (2), Finance (20 incl. CFO), HRMS (6), Operations (3), Consolidation (1)
 - **3 AI providers:** OpenAI (GPT-4o), Claude (Sonnet 4.5), and Gemini (2.5 Flash) — unified single-provider configuration
-- **Streaming:** Real-time token streaming via Frappe Realtime (Socket.IO/WebSocket)
+- **Streaming:** Real-time token streaming via Frappe Realtime (Socket.IO/WebSocket) with process step indicators
 - **CRUD:** Create, update, search ERPNext records via chat with confirmation pattern
 - **ECharts:** Inline chart rendering (bar, line, pie, horizontal bar, multi-series) with multi-color palette
 - **Multi-company & multi-currency:** All tools use `company` parameter and `base_*` fields
@@ -20,13 +20,16 @@ The AI Chatbot is a functional Frappe app with:
 - **Data layer:** `frappe.qb` Query Builder throughout — no raw SQL
 - **Token optimization:** Conversation history trimming (configurable `max_context_messages`), tool result compression (strip echart_option, truncate large datasets)
 - **Cost monitoring:** Per-request token usage tracking with estimated cost (Chatbot Token Usage DocType)
-- **Vue 3 frontend:** Components for chat, streaming, charts, tool calls
+- **Vue 3 frontend:** Claude.AI-inspired sidebar (collapsible, date-grouped, search), wider AI messages, icon-only buttons
+- **Dark mode:** OS-level `prefers-color-scheme` detection, Tailwind `dark:` classes across all components
+- **Chat search:** Backend `search_conversations` endpoint + sidebar search UI with debounced input
+- **Process indicators:** Real-time pipeline steps ("Preparing context...", "Executing Tool...", "Saving response...")
+- **Personalized greeting:** Centered logo + "Hello, {name}!" on new conversations; input moves to bottom after first message
 - **File upload:** Image/PDF/document upload with Vision API support (OpenAI, Claude & Gemini)
 - **Voice I/O:** Speech-to-text input (Web Speech API) and text-to-speech output (SpeechSynthesis)
 - **@Mention autocomplete:** `@company`, `@period`, `@cost_center`, `@department`, `@warehouse`, `@customer`, `@item`, `@accounting_dimension`
-- **Collapsible sidebar:** Toggle with localStorage persistence
-- **Favicon & Logo:** Custom SVG favicon in browser tab; AI assistant logo as avatar on AI messages
-- **User Avatar:** User's profile image (from Frappe `user_image`) displayed in user message bubbles; initials fallback when no avatar is set
+- **Favicon & Logo:** Custom orbital SVG (violet gradient, RGB dots) as favicon and AI assistant avatar
+- **User Avatar:** User's profile image on right side of message bubbles; initials fallback
 - **Settings tabs:** Chatbot Settings organized into tabs (API Configuration, Tools, Query Configuration, Prompts, Streaming)
 
 ---
@@ -748,147 +751,123 @@ Every Python, JavaScript, and Vue source file has been prepended with:
 
 ---
 
-## Phase 6A: UI Overhaul
+## Phase 6A: UI Overhaul ✅
 
-**Goal:** Redesign the chatbot UI for a cleaner, more professional look — remove header, redesign sidebar (Claude.AI-style), add real-time process indicators, greeting, search, proper alignment, and Frappe theme compatibility.
+**Goal:** Redesign the chatbot UI for a cleaner, more professional look — remove header, redesign sidebar (Claude.AI-style), add real-time process indicators, greeting, search, proper alignment, and OS dark mode support.
 
-**Priority:** High
+### 6A.1 Header Removal & Sidebar Redesign ✅
 
-### 6A.1 Header Removal & Sidebar Redesign
+**Files:** `ChatView.vue` (major rewrite), `Sidebar.vue` (complete rewrite), `ChatHeader.vue` (deleted)
 
-**Files:** `ChatView.vue`, `Sidebar.vue`, `ChatHeader.vue` (remove or gut)
+- **Header removed entirely** — provider selector, settings gear, and sidebar toggle all moved to sidebar
+- **Sidebar redesigned** (Claude.AI-inspired):
+  - **Expanded mode (w-72):** Header row (hamburger toggle + logo + settings gear), grey "New Chat" button, search input with debounce, date-grouped conversations (Today/Yesterday/Last 7 Days/Older), provider selector dropdown at bottom
+  - **Collapsed mode (w-14):** Icon-only strip — expand button, new chat (+), search icon
+  - Sidebar always visible (collapse = icon strip, expand = full panel) — no more hide/show
+  - `sidebarCollapsed` state persisted in `localStorage`
+- **ChatView wiring:** Sidebar receives `:selected-provider`, `:sidebar-collapsed`, `:search-results`, `:is-searching` props; emits `@toggle-sidebar`, `@change-provider`, `@search`
 
-**Current:** Header bar with provider selector, settings button, sidebar toggle. Sidebar with blue "New Chat" button.
-
-**Target:** No header. Sidebar styled like Claude.AI:
-```
-┌──────────────────────┬─────────────────────────────────────────┐
-│ [≡] AI Chatbot       │                                         │
-│                      │    Hello, Sanjay!                        │
-│ [+ New Chat]         │    How can I help you today?             │
-│ [🔍 Search]          │                                         │
-│ ──────────────────── │                                         │
-│ Today                │                                         │
-│  Sales summary       │                                         │
-│  Budget variance     │                                         │
-│ Yesterday            │                                         │
-│  Employee headcount  │                                         │
-│ ──────────────────── │                                         │
-│                      │  ┌─────────────────────────────────────┐│
-│                      │  │ Type your message...           📎 ➤ ││
-│                      │  └─────────────────────────────────────┘│
-└──────────────────────┴─────────────────────────────────────────┘
-```
-
-**Sidebar changes:**
-- Move toggle button to sidebar panel (top-left hamburger icon)
-- Change "New Chat" from button to list item style (subtle, not blue)
-- Add search button/input below "New Chat"
-- On collapse: show only icons (new chat +, search 🔍, conversation icons)
-- Group conversations by date: "Today", "Yesterday", "Last 7 Days", "Older"
-- Configurable max items via `max_chat_history` setting
-
-### 6A.2 Remove Prompt Suggestions
-
-**Files:** `ChatInput.vue`, `ChatView.vue`
-
-Remove the 4 hardcoded suggestion chips. Replace with the greeting message (see 6A.4).
-
-### 6A.3 Send/Stop Button & Component Alignment
+### 6A.2 Remove Prompt Suggestions ✅
 
 **Files:** `ChatInput.vue`
 
-- Send button: icon only (no label), compact
-- Stop button: icon only (square stop icon), red
-- Align: file upload (left) → textarea (center, flex) → voice (right) → send (right)
-- Consistent spacing and vertical alignment
+- Removed `suggestions` array, `handleSuggestionClick`, suggestion template block, `showSuggestions` prop
+- Removed `Zap` icon import (was only used in hints bar)
 
-### 6A.4 Personalized Greeting
+### 6A.3 Send/Stop Button & Input Cleanup ✅
+
+**Files:** `ChatInput.vue`
+
+- **Send button:** Icon-only (`<Send :size="18" />`), 52×52px square, blue, `title="Send message"`
+- **Stop button:** Icon-only (`<Square :size="16" />`), 52×52px square, red, `title="Stop generating"`
+- **Hints bar removed** — no more "ERPNext tools enabled", "Voice input", "Press Enter to send"
+- Layout: paperclip | textarea | mic | send/stop
+
+### 6A.4 Personalized Greeting ✅ (Pre-Phase 6A)
 
 **Files:** `ChatView.vue`
 
-When a new conversation has no messages, show:
-```
-Hello, {UserFullName}!
-How can I help you today?
-```
+- When `hasNoMessages`: centered logo + "Hello, {UserFullName}!" + "How can I help you today?" + centered ChatInput
+- Once a message is sent: normal bottom-pinned layout
 
-Fetch full name from the current session (already available via `frappe.session`).
+### 6A.5 Chat Search ✅
 
-### 6A.5 Chat Search
+**Files:** `api/chat.py` (new endpoint), `utils/api.js`, `Sidebar.vue`, `ChatView.vue`
 
-**Files:** `Sidebar.vue`, `api/chat.py` (new endpoint)
+- **Backend:** `search_conversations(query, limit=20)` — searches `Chatbot Conversation.title` and `Chatbot Message.content` using `LIKE %query%`, filters by current user, returns deduplicated results ordered by `updated_at desc`
+- **Frontend API:** `chatAPI.searchConversations(query, limit)` method
+- **Sidebar:** When search query is active, results replace grouped conversation list; "No results" empty state; clicking a result loads conversation and clears search
+- **Debounce:** 300ms in Sidebar before emitting `@search` to ChatView
 
-- Search input in sidebar that filters conversations by title and message content
-- Backend: `search_conversations(query)` endpoint using `frappe.get_all` with LIKE filters
-- Frontend: debounced search input, results replace conversation list
-
-### 6A.6 Response Panel Width
+### 6A.6 Response Panel Width ✅
 
 **Files:** `ChatMessage.vue`, `ChatView.vue`
 
-- AI response messages expand to full available width (up to the right edge of user message bubbles)
-- User messages remain right-aligned with constrained width
-- Ensure tables, charts, and code blocks use the full response width
+- **Assistant messages:** `max-w-[85%] lg:max-w-5xl` (was `max-w-3xl`)
+- **User messages:** `max-w-3xl` (unchanged)
+- **Streaming bubble:** Same wider width as assistant messages
+- Tables, charts, and code blocks now use the full available response width
 
-### 6A.7 Background Colors & Frappe Theme
+### 6A.7 Dark Mode ✅
 
-**Files:** `ChatView.vue`, `Sidebar.vue`, `ChatMessage.vue`, CSS/Tailwind
+**Files:** `tailwind.config.js`, `App.vue`, `ChatMessage.vue`, `ChatInput.vue`, `Sidebar.vue`, `TypingIndicator.vue`, `ChatView.vue`
 
-- Chat area background: white (light) / dark theme compatible
-- Response panel: white background
-- User message panel: current blue/grey styling
-- New Chat button: light grey
-- Respect Frappe's `data-theme` attribute (light/dark) for all components
-- Use CSS custom properties or Tailwind's `dark:` variants
+- **Tailwind:** `darkMode: 'class'` configuration
+- **App.vue:** Detects `prefers-color-scheme: dark` on mount, toggles `dark` class on `<html>`, listens for OS theme changes; background changed from gradient to `bg-white dark:bg-gray-900`
+- **Dark scrollbars:** Custom scrollbar colors for dark mode
+- **Dark markdown:** Global CSS overrides for `.dark .markdown-body` (text, code, links, blockquotes, tables)
+- **All components:** `dark:` variant classes on backgrounds, borders, text colors, hover states
+- **Scoped styles:** ChatMessage.vue has dark mode overrides for `.markdown-body` elements
 
-### 6A.8 Real-Time Process Indicators
+### 6A.8 Real-Time Process Indicators ✅
 
-**Files:** `ChatView.vue`, `TypingIndicator.vue` (or new `ProcessIndicator.vue`), `api/streaming.py`
+**Files:** `api/streaming.py`, `composables/useStreaming.js`, `TypingIndicator.vue`, `ChatView.vue`
 
-Replace the generic "AI is thinking..." with specific step indicators:
-- "Communicating with LLM..."
-- "Identifying tool..."
-- "Querying database..."
-- "Preparing data..."
-- "Waiting for LLM response..."
+**Backend (`streaming.py`):**
+- New `_publish_process_step(conversation_id, stream_id, step, user)` helper
+- Process steps published at 5 pipeline points:
+  1. After stream start: `"Preparing context..."`
+  2. Before provider call: `"Communicating with LLM..."`
+  3. Before each tool execution: `"Executing {Tool Name}..."`
+  4. After tool results: `"Processing results..."`
+  5. Before saving: `"Saving response..."`
 
-**Backend:** Publish process step events via `frappe.publish_realtime`:
-```python
-frappe.publish_realtime("ai_chat_process_step", {"step": "querying_database", "tool": "get_sales_analytics"}, ...)
-```
+**Frontend (`useStreaming.js`):**
+- New `processStep` ref (readonly)
+- `ai_chat_process_step` event handler updates `processStep.value`
+- Cleared in `reset()` and `startListening()`
 
-**Frontend:** Listen for `ai_chat_process_step` events and display the appropriate indicator with a subtle animation.
+**TypingIndicator.vue:**
+- Accepts `processStep` prop
+- Displays `{{ processStep || 'AI is thinking...' }}`
+- Logo SVG replaces hardcoded "AI" text avatar
+- Dark mode text color
 
-### 6A.9 Logo, Favicon & User Avatar ✅ (Partial — Pre-Phase 6A)
+**ChatView.vue:**
+- Destructures `processStep` from `useStreaming()`
+- Passes `:process-step="processStep"` to TypingIndicator
+- Shows process step during streaming above content
 
-**Files:** `www/ai-chatbot.html`, `api/chat.py`, `ChatMessage.vue`, `ChatView.vue`, `frontend/src/assets/logo.svg`, `frontend/public/favicon.svg`
+### 6A.9 Logo, Favicon & User Avatar ✅
 
-**Implemented:**
-- Favicon: Custom orbital SVG design (violet/purple gradient with RGB dots) as browser tab icon
-- Logo: Matching orbital SVG design used as AI assistant avatar on all AI messages
-- AI messages: Logo SVG replaces hardcoded "AI" text avatar
-- User messages: User's profile image (`user_image` from Frappe) displayed as avatar on **right side** of message bubble; initials fallback (e.g. "SK" for "Sanjay Kumar") when no avatar is set
-- Backend: `get_settings` API returns `user.fullname` and `user.avatar` via `get_fullname_and_avatar()`
-- Streaming messages: Logo SVG used for AI avatar during streaming
-- **Centered input on New Chat:** When conversation has no messages, the input component is centered both horizontally and vertically with a personalized greeting ("Hello, {name}!"); once a message is sent, the input moves to the bottom of the screen
-- **Personalized greeting:** Logo + "Hello, {UserFullName}! How can I help you today?" displayed on empty conversations
+**Files:** `frontend/src/assets/logo.svg`, `frontend/public/favicon.svg`, `ChatMessage.vue`, `ChatView.vue`, `Sidebar.vue`, `TypingIndicator.vue`
 
-**Remaining for full 6A.9:**
-- Display logo in sidebar header
+- Custom orbital SVG (violet gradient, RGB dots, chat bubble tail) as favicon and logo
+- Logo displayed in sidebar header, AI messages, streaming messages, and typing indicator
+- User avatar on right side of user message bubbles with initials fallback
 
-### 6A.10 Deliverables
+### 6A.10 Deliverables ✅
 
 | Item | Files | Status |
 |------|-------|--------|
-| Header removal | Remove/gut `ChatHeader.vue` | Planned |
-| Sidebar redesign | Rewrite `Sidebar.vue` (Claude.AI style, search, collapse icons) | Planned |
-| Layout | Updated `ChatView.vue` (no header, greeting, full-width responses) | Planned |
-| Process indicators | New `ProcessIndicator.vue` or updated `TypingIndicator.vue`, updated `streaming.py` | Planned |
-| Send/Stop icons | Updated `ChatInput.vue` | Planned |
-| Chat search | Updated `Sidebar.vue`, new search endpoint in `api/chat.py` | Planned |
-| Theme support | CSS updates for Frappe light/dark theme | Planned |
-| Logo/favicon | Updated `www/ai-chatbot.html` |
+| Header removal | Deleted `ChatHeader.vue` | ✅ |
+| Sidebar redesign | Complete rewrite of `Sidebar.vue` (Claude.AI style, search, collapse, date groups, provider) | ✅ |
+| Layout | Major rewrite of `ChatView.vue` (no header, greeting, wider messages, process steps) | ✅ |
+| Process indicators | Updated `TypingIndicator.vue` + `streaming.py` + `useStreaming.js` | ✅ |
+| Send/Stop icons | Updated `ChatInput.vue` (icon-only, no suggestions, no hints) | ✅ |
+| Chat search | `search_conversations()` endpoint + `searchConversations()` API + sidebar search UI | ✅ |
+| Dark mode | `tailwind.config.js`, `App.vue`, all components with `dark:` variants | ✅ |
+| Response width | `ChatMessage.vue` wider assistant messages (`max-w-[85%] lg:max-w-5xl`) | ✅ |
 
 **New dependencies:** None.
 
@@ -1461,7 +1440,7 @@ ai_chatbot/automation/notifications/
 | **5A** | UX & Accessibility | — | ✅ Done | File upload + Vision API, voice I/O, @mentions, sidebar toggle | None |
 | **5B** | Enterprise Analytics | — | ✅ Done | Permissions, dimensions, CFO dashboard, consolidation, config, plugins | None |
 | **6** | Settings & Gemini | High | ✅ Done | Unified provider config, Gemini, token/cost tracking, file headers | None |
-| **6A** | UI Overhaul | High | Planned | Claude-style sidebar, process indicators, greeting, search, theming | None |
+| **6A** | UI Overhaul | High | ✅ Done | Claude-style sidebar, process indicators, greeting, search, dark mode | None |
 | **6B** | Multi-Dim Analytics | Medium | Planned | Hierarchical grouping, GL Entry finance, BI cards | None |
 | **6C** | Workspace & Help | Low | Planned | Frappe workspace, help button, language selector | None |
 | **7** | Agentic RAG | Medium | Planned | Vector search + multi-agent orchestration + memory | chromadb, pypdf, python-docx |

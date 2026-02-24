@@ -25,6 +25,7 @@ export function useStreaming() {
   const currentConversationId = ref(null)
   const toolCalls = ref([])
   const streamError = ref(null)
+  const processStep = ref('')
 
   // Event handler references (for cleanup)
   let handlers = {}
@@ -46,6 +47,7 @@ export function useStreaming() {
     currentStreamId.value = null
     toolCalls.value = []
     streamError.value = null
+    processStep.value = ''
 
     // Remove any previous handlers
     _removeHandlers()
@@ -101,12 +103,18 @@ export function useStreaming() {
       streamError.value = data.error
     }
 
+    handlers.onProcessStep = (data) => {
+      if (data.conversation_id !== conversationId) return
+      processStep.value = data.step || ''
+    }
+
     on('ai_chat_stream_start', handlers.onStreamStart)
     on('ai_chat_token', handlers.onToken)
     on('ai_chat_tool_call', handlers.onToolCall)
     on('ai_chat_tool_result', handlers.onToolResult)
     on('ai_chat_stream_end', handlers.onStreamEnd)
     on('ai_chat_error', handlers.onError)
+    on('ai_chat_process_step', handlers.onProcessStep)
   }
 
   /**
@@ -125,6 +133,7 @@ export function useStreaming() {
     streamingContent.value = ''
     toolCalls.value = []
     streamError.value = null
+    processStep.value = ''
     currentStreamId.value = null
     isStreaming.value = false
   }
@@ -139,6 +148,7 @@ export function useStreaming() {
     if (handlers.onToolResult) off('ai_chat_tool_result', handlers.onToolResult)
     if (handlers.onStreamEnd) off('ai_chat_stream_end', handlers.onStreamEnd)
     if (handlers.onError) off('ai_chat_error', handlers.onError)
+    if (handlers.onProcessStep) off('ai_chat_process_step', handlers.onProcessStep)
     handlers = {}
   }
 
@@ -149,6 +159,7 @@ export function useStreaming() {
     currentStreamId: readonly(currentStreamId),
     toolCalls: readonly(toolCalls),
     streamError: readonly(streamError),
+    processStep: readonly(processStep),
 
     // Methods
     startListening,

@@ -437,6 +437,76 @@ def get_settings() -> dict:
 
 
 @frappe.whitelist()
+def search_conversations(query: str, limit: int = 20) -> dict:
+	"""Search conversations by title or message content.
+
+	Searches the current user's conversations where the title matches
+	or any message content matches the query string.
+
+	Args:
+		query: The search term.
+		limit: Maximum number of results to return.
+
+	Returns:
+		dict with success and conversations list.
+	"""
+	try:
+		query = query.strip()
+		if not query or len(query) < 2:
+			return {"success": True, "conversations": []}
+
+		user = frappe.session.user
+		like_pattern = f"%{query}%"
+
+		# Search by conversation title
+		title_matches = frappe.get_all(
+			"Chatbot Conversation",
+			filters={"user": user, "title": ["like", like_pattern]},
+			fields=["name", "title", "ai_provider", "status", "created_at", "updated_at", "message_count"],
+			order_by="updated_at desc",
+			limit=limit,
+		)
+
+		# Search by message content (get distinct conversation IDs)
+		message_conv_ids = frappe.get_all(
+			"Chatbot Message",
+			filters={"content": ["like", like_pattern]},
+			fields=["distinct conversation as name"],
+			limit=limit * 2,
+		)
+		message_conv_names = [m.name for m in message_conv_ids]
+
+		# Filter to user's conversations and fetch details
+		content_matches = []
+		if message_conv_names:
+			content_matches = frappe.get_all(
+				"Chatbot Conversation",
+				filters={"user": user, "name": ["in", message_conv_names]},
+				fields=["name", "title", "ai_provider", "status", "created_at", "updated_at", "message_count"],
+				order_by="updated_at desc",
+				limit=limit,
+			)
+
+		# Deduplicate (title matches take priority)
+		seen = {c.name for c in title_matches}
+		for c in content_matches:
+			if c.name not in seen:
+				title_matches.append(c)
+				seen.add(c.name)
+
+		# Sort combined results by updated_at desc and limit
+		title_matches.sort(key=lambda c: c.get("updated_at") or "", reverse=True)
+
+		return {
+			"success": True,
+			"conversations": title_matches[:limit],
+		}
+	except Exception as e:
+		frappe.log_error(f"Search conversations error: {e!s}", "AI Chatbot")
+		return {"success": False, "error": str(e)}
+
+
+@frappe.whitelist()
 def get_mention_values(mention_type: str, search_term: str = "", company: str = None) -> dict:
 	"""Return values for @mention autocomplete in chat input.
 

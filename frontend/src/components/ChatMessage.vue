@@ -6,8 +6,8 @@
     :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
   >
     <div
-      class="max-w-3xl rounded-2xl px-6 py-4 shadow-sm"
-      :class="messageClasses"
+      class="rounded-2xl px-6 py-4 shadow-sm"
+      :class="[messageClasses, message.role === 'user' ? 'max-w-3xl' : 'max-w-[85%] lg:max-w-5xl']"
     >
       <!-- User Message -->
       <div v-if="message.role === 'user'" class="text-white">
@@ -49,7 +49,7 @@
       </div>
 
       <!-- Assistant Message -->
-      <div v-else class="text-gray-800">
+      <div v-else class="text-gray-800 dark:text-gray-200">
         <div class="flex items-start gap-3">
           <img
             :src="logoSvg"
@@ -73,17 +73,17 @@
 
             <!-- Read-Only Tool Calls Display -->
             <div v-if="readToolCalls.length > 0" class="mt-4">
-              <div class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <Wrench :size="16" class="text-blue-600 flex-shrink-0 mt-0.5" />
+              <div class="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <Wrench :size="16" class="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                 <div class="flex-1">
-                  <div class="text-sm font-medium text-blue-900 mb-1">
+                  <div class="text-sm font-medium text-blue-900 dark:text-blue-300 mb-1">
                     Used ERPNext Tools
                   </div>
                   <div class="flex flex-wrap gap-2">
                     <span
                       v-for="(tool, index) in readToolCalls"
                       :key="index"
-                      class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium"
+                      class="inline-flex items-center px-2 py-1 bg-blue-100 dark:bg-blue-800/40 text-blue-700 dark:text-blue-300 rounded text-xs font-medium"
                     >
                       {{ getToolName(tool) }}
                     </span>
@@ -94,17 +94,17 @@
 
             <!-- Write Operation Tool Calls Display -->
             <div v-if="writeToolCalls.length > 0" class="mt-4">
-              <div class="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <PenSquare :size="16" class="text-amber-600 flex-shrink-0 mt-0.5" />
+              <div class="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <PenSquare :size="16" class="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                 <div class="flex-1">
-                  <div class="text-sm font-medium text-amber-900 mb-1">
+                  <div class="text-sm font-medium text-amber-900 dark:text-amber-300 mb-1">
                     Document Operations Performed
                   </div>
                   <div class="flex flex-wrap gap-2">
                     <span
                       v-for="(tool, index) in writeToolCalls"
                       :key="index"
-                      class="inline-flex items-center px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium"
+                      class="inline-flex items-center px-2 py-1 bg-amber-100 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300 rounded text-xs font-medium"
                     >
                       {{ getToolName(tool, true) }}
                     </span>
@@ -115,13 +115,13 @@
 
             <!-- Token Usage & Voice -->
             <div class="mt-3 flex items-center gap-3">
-              <span v-if="message.tokens_used" class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
+              <span v-if="message.tokens_used" class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded text-xs">
                 {{ message.tokens_used }} tokens
               </span>
               <button
                 v-if="voiceOutput.isSupported.value"
                 @click="voiceOutput.toggle(message.content)"
-                class="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                class="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
                 :title="voiceOutput.isSpeaking.value ? 'Stop speaking' : 'Read aloud'"
               >
                 <VolumeX v-if="voiceOutput.isSpeaking.value" :size="14" class="text-blue-600" />
@@ -186,7 +186,7 @@ const messageClasses = computed(() => {
   if (props.message.role === 'user') {
     return 'bg-blue-600 border border-blue-700'
   }
-  return 'bg-white border border-gray-200'
+  return 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
 })
 
 const renderedContent = computed(() => {
@@ -345,12 +345,20 @@ const formatToolName = (name, keepPrefix = false) => {
   @apply text-gray-800;
 }
 
+.dark :deep(.markdown-body) {
+  @apply text-gray-200;
+}
+
 :deep(.markdown-body p) {
   @apply mb-3;
 }
 
 :deep(.markdown-body code) {
   @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+.dark :deep(.markdown-body code) {
+  @apply bg-gray-700 text-gray-200;
 }
 
 :deep(.markdown-body pre) {
@@ -365,8 +373,16 @@ const formatToolName = (name, keepPrefix = false) => {
   @apply text-blue-600 hover:text-blue-800 underline;
 }
 
+.dark :deep(.markdown-body a) {
+  @apply text-blue-400 hover:text-blue-300;
+}
+
 :deep(.markdown-body blockquote) {
   @apply border-l-4 border-gray-300 pl-4 italic text-gray-600 my-3;
+}
+
+.dark :deep(.markdown-body blockquote) {
+  @apply border-gray-600 text-gray-400;
 }
 
 :deep(.markdown-body ul),
@@ -395,5 +411,27 @@ const formatToolName = (name, keepPrefix = false) => {
 
 :deep(.markdown-body h3) {
   @apply text-lg;
+}
+
+:deep(.markdown-body table) {
+  @apply border-collapse w-full my-4;
+}
+
+:deep(.markdown-body table th),
+:deep(.markdown-body table td) {
+  @apply border border-gray-300 px-4 py-2;
+}
+
+.dark :deep(.markdown-body table th),
+.dark :deep(.markdown-body table td) {
+  @apply border-gray-600;
+}
+
+:deep(.markdown-body table th) {
+  @apply bg-gray-50 font-semibold text-left;
+}
+
+.dark :deep(.markdown-body table th) {
+  @apply bg-gray-700;
 }
 </style>

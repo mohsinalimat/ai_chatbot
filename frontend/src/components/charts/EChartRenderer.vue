@@ -21,6 +21,11 @@ const props = defineProps({
 const chartContainer = ref(null)
 const chartInstance = shallowRef(null)
 let resizeObserver = null
+let themeObserver = null
+
+function isDarkMode() {
+  return document.documentElement.classList.contains('dark')
+}
 
 /**
  * Compact number formatter for chart axes.
@@ -56,11 +61,16 @@ onMounted(async () => {
   if (!chartContainer.value) return
 
   // Lazy-load echarts to avoid blocking initial page load
-  const echarts = await import('echarts')
-  const chart = echarts.init(chartContainer.value)
+  const echartsModule = await import('echarts')
+  const theme = isDarkMode() ? 'dark' : undefined
+  const chart = echartsModule.init(chartContainer.value, theme)
   chartInstance.value = chart
 
+  // For dark theme, set transparent background so it blends with the message bubble
   const option = { ...props.option }
+  if (isDarkMode()) {
+    option.backgroundColor = 'transparent'
+  }
   injectAxisFormatters(option)
   chart.setOption(option)
 
@@ -69,6 +79,27 @@ onMounted(async () => {
     chart.resize()
   })
   resizeObserver.observe(chartContainer.value)
+
+  // Watch for dark mode toggle — reinitialize chart with correct theme
+  themeObserver = new MutationObserver(() => {
+    const nowDark = isDarkMode()
+    const newTheme = nowDark ? 'dark' : undefined
+    if (chartInstance.value) {
+      chartInstance.value.dispose()
+    }
+    const newChart = echartsModule.init(chartContainer.value, newTheme)
+    const newOption = { ...props.option }
+    if (nowDark) {
+      newOption.backgroundColor = 'transparent'
+    }
+    injectAxisFormatters(newOption)
+    newChart.setOption(newOption)
+    chartInstance.value = newChart
+  })
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+  })
 })
 
 // Re-render when option prop changes
@@ -85,6 +116,10 @@ watch(
 )
 
 onUnmounted(() => {
+  if (themeObserver) {
+    themeObserver.disconnect()
+    themeObserver = null
+  }
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null

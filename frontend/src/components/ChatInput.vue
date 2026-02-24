@@ -30,13 +30,13 @@
           </div>
         </div>
 
-        <div class="flex items-end gap-3">
+        <div class="flex items-center gap-2">
           <!-- File Upload Button -->
           <button
             type="button"
             @click="triggerFileInput"
             :disabled="disabled && !isStreaming"
-            class="h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            class="h-10 w-10 flex-shrink-0 rounded-lg flex items-center justify-center bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Attach files (images, PDF, documents)"
           >
             <Paperclip :size="20" class="text-gray-500 dark:text-gray-400" />
@@ -74,7 +74,7 @@
               placeholder="Type your message... (Shift+Enter for new line)"
               rows="1"
               class="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all"
-              style="min-height: 52px; max-height: 200px;"
+              style="min-height: 44px; max-height: 200px;"
             ></textarea>
 
             <!-- Interim voice transcript -->
@@ -128,10 +128,10 @@
             @click="toggleVoice"
             :disabled="disabled && !isStreaming"
             :class="[
-              'h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center transition-all',
+              'h-10 w-10 flex-shrink-0 rounded-lg flex items-center justify-center transition-all',
               isListening
                 ? 'bg-red-500 hover:bg-red-600 animate-recording'
-                : 'border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
+                : 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
             ]"
             :title="isListening ? 'Stop recording' : 'Voice input'"
           >
@@ -143,10 +143,10 @@
             v-if="isStreaming"
             type="button"
             @click="$emit('stop')"
-            class="h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-all duration-200"
+            class="h-10 w-10 flex-shrink-0 rounded-lg flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-all duration-200"
             title="Stop generating"
           >
-            <Square :size="16" />
+            <Square :size="14" />
           </button>
 
           <!-- Send Button (shown when not streaming) -->
@@ -154,10 +154,10 @@
             v-else
             type="submit"
             :disabled="disabled || (!inputValue.trim() && !hasFiles)"
-            class="h-[52px] w-[52px] flex-shrink-0 rounded-xl flex items-center justify-center bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed transition-all duration-200"
+            class="h-10 w-10 flex-shrink-0 rounded-lg flex items-center justify-center bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed transition-all duration-200"
             title="Send message"
           >
-            <Send :size="18" />
+            <Send :size="20" />
           </button>
         </div>
 
@@ -525,7 +525,7 @@ const adjustTextareaHeight = () => {
 const resetTextareaHeight = () => {
   const textarea = textareaRef.value
   if (textarea) {
-    textarea.style.height = '52px'
+    textarea.style.height = '44px'
   }
 }
 

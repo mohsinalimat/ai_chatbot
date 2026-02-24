@@ -10,7 +10,7 @@
       :class="[messageClasses, message.role === 'user' ? 'max-w-3xl' : 'max-w-[85%] lg:max-w-5xl']"
     >
       <!-- User Message -->
-      <div v-if="message.role === 'user'" class="text-white">
+      <div v-if="message.role === 'user'" class="text-gray-800 dark:text-gray-100">
         <div class="flex items-start gap-3">
           <div class="flex-1">
             <p class="whitespace-pre-wrap">{{ message.content }}</p>
@@ -20,7 +20,7 @@
               <div
                 v-for="(att, idx) in parsedAttachments"
                 :key="idx"
-                class="flex items-center gap-2 px-3 py-1.5 bg-white bg-opacity-20 rounded-lg text-xs"
+                class="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-600 rounded-lg text-xs border border-gray-200 dark:border-gray-500"
               >
                 <img
                   v-if="att.is_image && att.file_url"
@@ -37,11 +37,11 @@
             v-if="userInfo?.avatar"
             :src="userInfo.avatar"
             :alt="userInfo.fullname || 'User'"
-            class="w-8 h-8 rounded-full object-cover flex-shrink-0"
+            class="w-10 h-10 rounded-full object-cover flex-shrink-0"
           />
           <div
             v-else
-            class="w-8 h-8 rounded-full bg-white bg-opacity-20 flex items-center justify-center text-sm font-semibold flex-shrink-0"
+            class="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-500 text-gray-700 dark:text-gray-200 flex items-center justify-center text-sm font-semibold flex-shrink-0"
           >
             {{ userInitials }}
           </div>
@@ -54,7 +54,7 @@
           <img
             :src="logoSvg"
             alt="AI"
-            class="w-8 h-8 rounded-full flex-shrink-0"
+            class="w-10 h-10 rounded-full flex-shrink-0"
           />
           <div class="flex-1">
             <!-- Markdown Content -->
@@ -184,7 +184,7 @@ const parsedAttachments = computed(() => {
 
 const messageClasses = computed(() => {
   if (props.message.role === 'user') {
-    return 'bg-blue-600 border border-blue-700'
+    return 'bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600'
   }
   return 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
 })
@@ -340,98 +340,3 @@ const formatToolName = (name, keepPrefix = false) => {
 }
 </script>
 
-<style scoped>
-:deep(.markdown-body) {
-  @apply text-gray-800;
-}
-
-.dark :deep(.markdown-body) {
-  @apply text-gray-200;
-}
-
-:deep(.markdown-body p) {
-  @apply mb-3;
-}
-
-:deep(.markdown-body code) {
-  @apply bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono;
-}
-
-.dark :deep(.markdown-body code) {
-  @apply bg-gray-700 text-gray-200;
-}
-
-:deep(.markdown-body pre) {
-  @apply bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4;
-}
-
-:deep(.markdown-body pre code) {
-  @apply bg-transparent p-0 text-sm;
-}
-
-:deep(.markdown-body a) {
-  @apply text-blue-600 hover:text-blue-800 underline;
-}
-
-.dark :deep(.markdown-body a) {
-  @apply text-blue-400 hover:text-blue-300;
-}
-
-:deep(.markdown-body blockquote) {
-  @apply border-l-4 border-gray-300 pl-4 italic text-gray-600 my-3;
-}
-
-.dark :deep(.markdown-body blockquote) {
-  @apply border-gray-600 text-gray-400;
-}
-
-:deep(.markdown-body ul),
-:deep(.markdown-body ol) {
-  @apply ml-6 my-3;
-}
-
-:deep(.markdown-body li) {
-  @apply mb-1;
-}
-
-:deep(.markdown-body h1),
-:deep(.markdown-body h2),
-:deep(.markdown-body h3),
-:deep(.markdown-body h4) {
-  @apply font-bold mt-6 mb-3;
-}
-
-:deep(.markdown-body h1) {
-  @apply text-2xl;
-}
-
-:deep(.markdown-body h2) {
-  @apply text-xl;
-}
-
-:deep(.markdown-body h3) {
-  @apply text-lg;
-}
-
-:deep(.markdown-body table) {
-  @apply border-collapse w-full my-4;
-}
-
-:deep(.markdown-body table th),
-:deep(.markdown-body table td) {
-  @apply border border-gray-300 px-4 py-2;
-}
-
-.dark :deep(.markdown-body table th),
-.dark :deep(.markdown-body table td) {
-  @apply border-gray-600;
-}
-
-:deep(.markdown-body table th) {
-  @apply bg-gray-50 font-semibold text-left;
-}
-
-.dark :deep(.markdown-body table th) {
-  @apply bg-gray-700;
-}
-</style>

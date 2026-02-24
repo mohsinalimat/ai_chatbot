@@ -14,4 +14,8 @@ def get_context(context):
 	# Pass site name to template (frappe.local is not directly accessible in Jinja2)
 	context.site_name = frappe.local.site
 
+	# Get user's desk theme preference for dark mode support
+	desk_theme = frappe.db.get_value("User", frappe.session.user, "desk_theme") or "Light"
+	context.desk_theme = desk_theme.lower()
+
 	return context

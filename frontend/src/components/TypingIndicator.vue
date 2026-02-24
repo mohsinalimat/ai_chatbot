@@ -5,7 +5,7 @@
     <img
       :src="logoSvg"
       alt="AI"
-      class="w-8 h-8 rounded-full flex-shrink-0"
+      class="w-10 h-10 rounded-full flex-shrink-0"
     />
     <div class="flex items-center gap-2">
       <div class="flex gap-1">
@@ -13,7 +13,7 @@
         <div class="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
         <div class="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
       </div>
-      <span class="text-gray-600 dark:text-gray-400 text-sm">{{ processStep || 'AI is thinking...' }}</span>
+      <span class="text-gray-600 dark:text-gray-400 text-base">{{ processStep || 'AI is thinking...' }}</span>
     </div>
   </div>
 </template>

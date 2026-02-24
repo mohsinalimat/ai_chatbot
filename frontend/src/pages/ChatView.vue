@@ -29,7 +29,7 @@
         class="flex-1 flex flex-col items-center justify-center px-4"
       >
         <div class="text-center mb-8">
-          <img :src="logoSvg" alt="AI Chatbot" class="w-16 h-16 mx-auto mb-4" />
+          <img :src="logoSvg" alt="AI Chatbot" class="w-24 h-24 mx-auto mb-4" />
           <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100 mb-2">
             Hello, {{ userInfo.fullname || 'there' }}!
           </h1>
@@ -69,11 +69,11 @@
                   <img
                     :src="logoSvg"
                     alt="AI"
-                    class="w-8 h-8 rounded-full flex-shrink-0"
+                    class="w-10 h-10 rounded-full flex-shrink-0"
                   />
                   <div class="flex-1">
                     <!-- Process step during streaming -->
-                    <div v-if="processStep" class="text-xs text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
+                    <div v-if="processStep" class="text-sm text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
                       <div class="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                       {{ processStep }}
                     </div>

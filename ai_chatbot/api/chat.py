@@ -471,10 +471,11 @@ def search_conversations(query: str, limit: int = 20) -> dict:
 		message_conv_ids = frappe.get_all(
 			"Chatbot Message",
 			filters={"content": ["like", like_pattern]},
-			fields=["distinct conversation as name"],
+			fields=["conversation"],
+			group_by="conversation",
 			limit=limit * 2,
 		)
-		message_conv_names = [m.name for m in message_conv_ids]
+		message_conv_names = [m.conversation for m in message_conv_ids]
 
 		# Filter to user's conversations and fetch details
 		content_matches = []

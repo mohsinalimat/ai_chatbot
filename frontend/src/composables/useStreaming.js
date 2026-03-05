@@ -27,6 +27,10 @@ export function useStreaming() {
   const streamError = ref(null)
   const processStep = ref('')
 
+  // Agent orchestration state
+  const agentPlan = ref([])
+  const agentCurrentStep = ref(null)
+
   // Event handler references (for cleanup)
   let handlers = {}
 
@@ -48,6 +52,8 @@ export function useStreaming() {
     toolCalls.value = []
     streamError.value = null
     processStep.value = ''
+    agentPlan.value = []
+    agentCurrentStep.value = null
 
     // Remove any previous handlers
     _removeHandlers()
@@ -108,6 +114,39 @@ export function useStreaming() {
       processStep.value = data.step || ''
     }
 
+    // Agent orchestration event handlers
+    handlers.onAgentPlan = (data) => {
+      if (data.conversation_id !== conversationId) return
+      agentPlan.value = (data.plan || []).map(s => ({
+        ...s,
+        status: 'pending',
+        summary: '',
+        error: '',
+      }))
+    }
+
+    handlers.onAgentStepStart = (data) => {
+      if (data.conversation_id !== conversationId) return
+      agentCurrentStep.value = data.step_id
+      const step = agentPlan.value.find(s => s.step_id === data.step_id)
+      if (step) {
+        step.status = 'running'
+      }
+    }
+
+    handlers.onAgentStepResult = (data) => {
+      if (data.conversation_id !== conversationId) return
+      const step = agentPlan.value.find(s => s.step_id === data.step_id)
+      if (step) {
+        step.status = data.status || 'completed'
+        step.summary = data.summary || ''
+        if (data.status === 'failed') {
+          step.error = data.summary || 'Step failed'
+        }
+      }
+      agentCurrentStep.value = null
+    }
+
     on('ai_chat_stream_start', handlers.onStreamStart)
     on('ai_chat_token', handlers.onToken)
     on('ai_chat_tool_call', handlers.onToolCall)
@@ -115,6 +154,9 @@ export function useStreaming() {
     on('ai_chat_stream_end', handlers.onStreamEnd)
     on('ai_chat_error', handlers.onError)
     on('ai_chat_process_step', handlers.onProcessStep)
+    on('ai_chat_agent_plan', handlers.onAgentPlan)
+    on('ai_chat_agent_step_start', handlers.onAgentStepStart)
+    on('ai_chat_agent_step_result', handlers.onAgentStepResult)
   }
 
   /**
@@ -136,6 +178,8 @@ export function useStreaming() {
     processStep.value = ''
     currentStreamId.value = null
     isStreaming.value = false
+    agentPlan.value = []
+    agentCurrentStep.value = null
   }
 
   /**
@@ -149,6 +193,9 @@ export function useStreaming() {
     if (handlers.onStreamEnd) off('ai_chat_stream_end', handlers.onStreamEnd)
     if (handlers.onError) off('ai_chat_error', handlers.onError)
     if (handlers.onProcessStep) off('ai_chat_process_step', handlers.onProcessStep)
+    if (handlers.onAgentPlan) off('ai_chat_agent_plan', handlers.onAgentPlan)
+    if (handlers.onAgentStepStart) off('ai_chat_agent_step_start', handlers.onAgentStepStart)
+    if (handlers.onAgentStepResult) off('ai_chat_agent_step_result', handlers.onAgentStepResult)
     handlers = {}
   }
 
@@ -160,6 +207,10 @@ export function useStreaming() {
     toolCalls: readonly(toolCalls),
     streamError: readonly(streamError),
     processStep: readonly(processStep),
+
+    // Agent orchestration state
+    agentPlan: readonly(agentPlan),
+    agentCurrentStep: readonly(agentCurrentStep),
 
     // Methods
     startListening,

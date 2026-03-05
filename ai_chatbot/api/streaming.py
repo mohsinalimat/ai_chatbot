@@ -219,6 +219,27 @@ def _stream_with_tools(
 	Returns:
 		tuple of (full_content, tool_calls_data, tool_results_data, tokens_used)
 	"""
+	# Check if agent orchestration should handle this query
+	from ai_chatbot.ai.agents.orchestrator import run_orchestrated_streaming, should_orchestrate
+
+	user_msg = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
+	if isinstance(user_msg, list):
+		user_msg = " ".join(p.get("text", "") for p in user_msg if p.get("type") == "text")
+
+	if should_orchestrate(provider, user_msg, history, tools):
+		result = run_orchestrated_streaming(
+			ai_provider=ai_provider,
+			provider=provider,
+			history=history,
+			tools=tools,
+			conversation_id=conversation_id,
+			stream_id=stream_id,
+			user=user,
+		)
+		if result is not None:
+			return result
+		# Fall through to standard flow if orchestration returned None
+
 	full_content = ""
 	all_tool_calls = []
 	all_tool_results = []
@@ -451,7 +472,7 @@ def _get_conversation_history(conversation_id: str) -> list[dict]:
 		if msg.role == "user" and msg.attachments:
 			try:
 				atts = json.loads(msg.attachments) if isinstance(msg.attachments, str) else msg.attachments
-			except (json.JSONDecodeError, TypeError):
+			except json.JSONDecodeError, TypeError:
 				atts = None
 
 			if atts:

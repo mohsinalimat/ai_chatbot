@@ -94,7 +94,7 @@ def get_conversation_messages(conversation_id: str) -> dict:
 						if isinstance(msg["tool_calls"], str)
 						else msg["tool_calls"]
 					)
-				except (json.JSONDecodeError, TypeError):
+				except json.JSONDecodeError, TypeError:
 					msg["tool_calls"] = None
 			if msg.get("tool_results"):
 				try:
@@ -103,7 +103,7 @@ def get_conversation_messages(conversation_id: str) -> dict:
 						if isinstance(msg["tool_results"], str)
 						else msg["tool_results"]
 					)
-				except (json.JSONDecodeError, TypeError):
+				except json.JSONDecodeError, TypeError:
 					msg["tool_results"] = None
 			if msg.get("attachments"):
 				try:
@@ -112,7 +112,7 @@ def get_conversation_messages(conversation_id: str) -> dict:
 						if isinstance(msg["attachments"], str)
 						else msg["attachments"]
 					)
-				except (json.JSONDecodeError, TypeError):
+				except json.JSONDecodeError, TypeError:
 					msg["attachments"] = None
 
 		# Load session context for conversation-level preferences
@@ -121,7 +121,7 @@ def get_conversation_messages(conversation_id: str) -> dict:
 			raw_ctx = frappe.db.get_value("Chatbot Conversation", conversation_id, "session_context")
 			if raw_ctx:
 				session_context = json.loads(raw_ctx) if isinstance(raw_ctx, str) else raw_ctx
-		except (json.JSONDecodeError, TypeError):
+		except json.JSONDecodeError, TypeError:
 			pass
 
 		return {
@@ -219,7 +219,7 @@ def get_conversation_history(conversation_id: str) -> list[dict]:
 		if msg.role == "user" and msg.attachments:
 			try:
 				atts = json.loads(msg.attachments) if isinstance(msg.attachments, str) else msg.attachments
-			except (json.JSONDecodeError, TypeError):
+			except json.JSONDecodeError, TypeError:
 				atts = None
 
 			if atts:
@@ -292,6 +292,20 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 	"""Generate non-streaming AI response with provider-agnostic parsing."""
 	try:
 		ai_provider = conversation.ai_provider
+
+		# Check if agent orchestration should handle this query
+		from ai_chatbot.ai.agents.orchestrator import run_orchestrated, should_orchestrate
+
+		user_msg = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
+		if isinstance(user_msg, list):
+			user_msg = " ".join(p.get("text", "") for p in user_msg if p.get("type") == "text")
+
+		if should_orchestrate(provider, user_msg, history, tools):
+			result = run_orchestrated(conversation, provider, history, tools)
+			if result is not None:
+				return result
+			# Fall through to standard flow if orchestration returned None
+
 		max_tool_rounds = 5
 
 		# Multi-round tool call loop
@@ -518,6 +532,7 @@ def get_settings() -> dict:
 					"finance": settings.enable_finance_tools,
 					"inventory": settings.enable_inventory_tools,
 					"operations": getattr(settings, "enable_write_operations", 0),
+					"agent_orchestration": getattr(settings, "enable_agent_orchestration", 0),
 				},
 			},
 			"user": {

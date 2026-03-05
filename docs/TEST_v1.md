@@ -3647,3 +3647,217 @@ Tests that the system can auto-create missing Customer, Supplier, Item, and UOM 
 1. Upload an invoice that contains remarks, notes, or bank details.
 2. Extract and create.
 3. **Expected**: The `remarks` field contains the extracted remarks text.
+
+---
+
+## Phase 8: Multi-Agent Orchestration
+
+Multi-agent orchestration adds a planner → analyst → synthesis pipeline for complex, multi-step queries. Simple queries continue to use the existing single-pass tool-calling flow unchanged.
+
+### Prerequisites
+
+```bash
+cd ~/frappe-bench
+bench --site $SITE migrate
+cd apps/ai_chatbot/frontend && npm run build
+bench --site $SITE clear-cache
+```
+
+---
+
+### 8.1 Enable Agent Orchestration
+
+1. Navigate to **Chatbot Settings** (`/app/chatbot-settings`).
+2. Scroll to the **Tools** tab.
+3. Find the **Agent Orchestration** section (below "Enable Write Operations").
+4. Check **Enable Agent Orchestration**.
+5. Click **Save**.
+6. **Expected**: The checkbox saves without errors. The setting is visible under the Tools tab.
+
+---
+
+### 8.2 Simple Query Bypass
+
+Verifies that simple queries do NOT trigger orchestration and use the normal flow.
+
+#### 8.2.1 Short Query
+
+1. Open the chatbot.
+2. Send:
+   > "Show me sales this month"
+3. **Expected**: The response appears normally — no "Analyzing your query..." panel, no step-by-step breakdown. The AI uses the standard tool-calling flow (you may see the usual tool call indicators).
+
+#### 8.2.2 Single-Tool Query
+
+1. Send:
+   > "What is the receivable aging?"
+2. **Expected**: Normal single-pass response. No orchestration panel visible.
+
+#### 8.2.3 Non-Data Query
+
+1. Send:
+   > "Hello, how are you?"
+2. **Expected**: Normal conversational response with no orchestration.
+
+---
+
+### 8.3 Complex Query — Orchestration Triggered
+
+Verifies that complex, multi-step queries trigger the multi-agent pipeline.
+
+#### 8.3.1 Comparison Query
+
+1. Send:
+   > "Compare this quarter's sales across all regions and suggest improvements based on the trends"
+2. **Expected**:
+   - An **"Analyzing your query..."** panel appears (brain icon with collapsible header).
+   - The panel shows a numbered list of 2–6 steps (e.g., "Fetch quarterly sales data", "Analyze regional trends", etc.).
+   - Each step shows a spinner while running, then a checkmark (✓) when completed.
+   - After all steps complete, the panel auto-collapses and the AI streams a synthesized response that references data from multiple steps.
+
+#### 8.3.2 Analysis Query
+
+1. Send:
+   > "Give me a comprehensive analysis of our financial health including revenue trends, expense breakdown, and profitability ratios"
+2. **Expected**: Same orchestration behavior — plan appears, steps execute with progress indicators, synthesized response follows.
+
+#### 8.3.3 Root Cause Query
+
+1. Send:
+   > "What's causing the decline in profitability this quarter compared to last quarter and what actions should we take?"
+2. **Expected**: Orchestration triggers. The plan should include data-gathering steps (fetching profit data for both quarters) and an analysis step.
+
+---
+
+### 8.4 AgentThinking Panel — UI Verification
+
+#### 8.4.1 Panel Visibility
+
+1. Trigger a complex query (e.g., from 8.3.1).
+2. **Expected**:
+   - The panel header shows a brain icon and "Analyzing your query..." text.
+   - A chevron (▼) on the right allows collapsing/expanding the panel.
+   - Steps are listed with their descriptions and status icons.
+
+#### 8.4.2 Step Status Icons
+
+1. While a complex query is running, observe the panel.
+2. **Expected**:
+   - **Pending steps**: Show a step number (1, 2, 3...) in a grey circle.
+   - **Running step**: Shows an animated spinner in indigo/blue.
+   - **Completed step**: Shows a green checkmark (✓).
+   - **Failed step**: Shows a red X.
+   - **Skipped step**: Shows a grey dash (—).
+
+#### 8.4.3 Auto-Collapse on Synthesis
+
+1. Watch the panel during a complex query.
+2. **Expected**: When the AI starts streaming the final synthesized response, the panel automatically collapses (steps hidden, header still visible). You can click to re-expand it.
+
+#### 8.4.4 Manual Collapse/Expand
+
+1. While the panel is visible, click the chevron to collapse.
+2. Click again to expand.
+3. **Expected**: Panel toggles smoothly between collapsed and expanded states.
+
+---
+
+### 8.5 Streaming Verification
+
+#### 8.5.1 Streamed Synthesis
+
+1. Ensure streaming is enabled in Chatbot Settings.
+2. Send a complex query.
+3. **Expected**:
+   - Step execution happens first (visible in the AgentThinking panel).
+   - After steps complete, the "Synthesizing results..." process step briefly appears.
+   - The final response streams token-by-token (same streaming behavior as normal responses).
+
+#### 8.5.2 Tool Call Events During Steps
+
+1. Open the browser DevTools → Console.
+2. Send a complex query.
+3. **Expected**: You should see realtime events in the socket traffic:
+   - `ai_chat_agent_plan` — Contains the plan array with step_id, description, tool_hint.
+   - `ai_chat_agent_step_start` — For each step, with step_id, step_number, total_steps.
+   - `ai_chat_tool_call` / `ai_chat_tool_result` — For each tool executed within a step.
+   - `ai_chat_agent_step_result` — After each step, with status and summary.
+   - `ai_chat_token` — During synthesis streaming.
+
+---
+
+### 8.6 Error Resilience
+
+#### 8.6.1 Partial Step Failure
+
+1. Send a complex query that references both valid and potentially problematic data (e.g., a DocType that may not have data).
+2. **Expected**: If one step fails:
+   - The failed step shows a red X in the panel.
+   - The remaining steps continue to execute.
+   - The synthesis response is produced using the data from the successful steps and mentions any gaps.
+
+#### 8.6.2 Graceful Fallback
+
+1. If orchestration fails entirely (e.g., planner returns invalid JSON, or >50% of steps fail):
+2. **Expected**: The system falls back to the standard single-pass tool-calling flow. The user still gets a response (possibly less detailed), not an error.
+
+#### 8.6.3 Check Error Logs
+
+1. After any failure scenario, navigate to **Error Log** (`/app/error-log`).
+2. Filter for "AI Chatbot Agent".
+3. **Expected**: Errors are logged with descriptive messages (e.g., "Agent classifier error", "Agent analyst error (step 1)", "Agent planner error").
+
+---
+
+### 8.7 Toggle Test — Disable Orchestration
+
+1. Navigate to **Chatbot Settings** → **Tools** tab.
+2. Uncheck **Enable Agent Orchestration** and save.
+3. Send the same complex query from 8.3.1:
+   > "Compare this quarter's sales across all regions and suggest improvements based on the trends"
+4. **Expected**: No orchestration panel appears. The query is handled by the standard tool-calling flow (may produce a simpler response with fewer tool calls).
+5. Re-enable the setting for further testing.
+
+---
+
+### 8.8 Non-Streaming Mode
+
+1. Disable streaming in Chatbot Settings (if applicable).
+2. Send a complex query.
+3. **Expected**: The response appears all at once (no token-by-token streaming) but still uses orchestration — the final message includes data from multiple tool calls. The AgentThinking panel may not appear (non-streaming doesn't publish realtime events for step progress), but the response quality should match streaming mode.
+
+---
+
+### 8.9 Edge Cases
+
+#### 8.9.1 Empty/Whitespace Message
+
+1. Try to send an empty message or one with only spaces.
+2. **Expected**: Handled gracefully — no orchestration triggered, no errors.
+
+#### 8.9.2 Very Long Query
+
+1. Send a very long complex query (100+ words with multiple analysis requests).
+2. **Expected**: Orchestration triggers. The planner produces a plan with up to 6 steps (max cap). No steps are duplicated.
+
+#### 8.9.3 Query in Non-English Language
+
+1. If you have language selection enabled, switch to another language.
+2. Send a complex query in that language (e.g., Hindi: "इस तिमाही की बिक्री की तुलना पिछली तिमाही से करें और सुधार सुझाएं").
+3. **Expected**: Orchestration can still trigger (the classifier checks for complexity patterns). The response should be in the selected language.
+
+#### 8.9.4 No Tools Available
+
+1. Temporarily disable all tool categories in Chatbot Settings.
+2. Send a complex query.
+3. **Expected**: Orchestration is NOT triggered (no tools to work with). The AI responds conversationally without tool calls.
+
+---
+
+### 8.10 Verify Token Tracking
+
+1. Send a complex query that triggers orchestration.
+2. After the response appears, check the conversation in the database or via the admin panel.
+3. **Expected**: The `tokens_used` on the Chatbot Message and `total_tokens` on the Chatbot Conversation reflect the combined usage across classification + planning + analyst steps + synthesis.
+4. Navigate to **Token Usage** (`/app/token-usage`).
+5. **Expected**: A token usage record is created for the orchestrated response.

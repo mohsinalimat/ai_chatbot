@@ -28,6 +28,8 @@
   "auto_create_idp_masters",
   "data_operations_section",
   "enable_write_operations",
+  "agent_orchestration_section",
+  "enable_agent_orchestration",
   "query_config_tab",
   "query_config_section",
   "default_query_limit",
@@ -197,6 +199,18 @@
    "fieldname": "enable_write_operations",
    "fieldtype": "Check",
    "label": "Enable Write Operations"
+  },
+  {
+   "fieldname": "agent_orchestration_section",
+   "fieldtype": "Section Break",
+   "label": "Agent Orchestration"
+  },
+  {
+   "default": "0",
+   "description": "Enable multi-agent orchestration for complex queries. When enabled, complex queries are automatically decomposed into sub-tasks and executed step-by-step by specialized agents. This uses additional LLM calls and tokens but produces more comprehensive analysis for multi-dimensional queries.",
+   "fieldname": "enable_agent_orchestration",
+   "fieldtype": "Check",
+   "label": "Enable Agent Orchestration"
   },
   {
    "fieldname": "query_config_tab",
@@ -369,7 +383,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-03-04 21:16:13.673797",
+ "modified": "2026-03-05 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Chatbot",
  "name": "Chatbot Settings",

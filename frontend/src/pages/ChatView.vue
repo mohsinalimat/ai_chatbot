@@ -76,7 +76,7 @@
           />
 
           <!-- Streaming Message (live tokens) -->
-          <div v-if="isStreaming && streamingContent" class="flex justify-start">
+          <div v-if="isStreaming && (streamingContent || agentPlan.length > 0)" class="flex justify-start">
             <div class="max-w-[85%] lg:max-w-5xl rounded-2xl px-6 py-4 shadow-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
               <div class="text-gray-800 dark:text-gray-200">
                 <div class="flex items-start gap-3">
@@ -86,8 +86,14 @@
                     class="w-10 h-10 rounded-full flex-shrink-0"
                   />
                   <div class="flex-1">
+                    <!-- Agent orchestration plan progress -->
+                    <AgentThinking
+                      :plan="agentPlan"
+                      :auto-collapse="!!streamingContent"
+                    />
+
                     <!-- Process step during streaming -->
-                    <div v-if="processStep" class="text-sm text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
+                    <div v-if="processStep && agentPlan.length === 0" class="text-sm text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
                       <div class="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                       {{ processStep }}
                     </div>
@@ -132,8 +138,8 @@
             </div>
           </div>
 
-          <!-- Typing indicator: shown while waiting for response (before streaming tokens arrive) -->
-          <div v-if="isLoading && !streamingContent" class="flex justify-start">
+          <!-- Typing indicator: shown while waiting for response (before streaming tokens or agent plan arrive) -->
+          <div v-if="isLoading && !streamingContent && agentPlan.length === 0" class="flex justify-start">
             <div class="bg-white dark:bg-gray-800 rounded-2xl px-6 py-4 shadow-sm border border-gray-200 dark:border-gray-700 max-w-[85%] lg:max-w-5xl">
               <TypingIndicator :process-step="processStep" />
             </div>
@@ -179,6 +185,7 @@ import Sidebar from '../components/Sidebar.vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import ChatInput from '../components/ChatInput.vue'
 import TypingIndicator from '../components/TypingIndicator.vue'
+import AgentThinking from '../components/AgentThinking.vue'
 import { chatAPI } from '../utils/api'
 import { renderMarkdown } from '../utils/markdown'
 import { useStreaming } from '../composables/useStreaming'
@@ -267,6 +274,7 @@ const {
   toolCalls: streamToolCalls,
   processStep,
   streamError,
+  agentPlan,
   startListening,
   stopListening,
   reset: resetStreaming,

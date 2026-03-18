@@ -1,8 +1,8 @@
 # AI Chatbot for ERPNext
 
-An intelligent conversational assistant for ERPNext, built on the Frappe framework. It connects to OpenAI, Anthropic Claude, or Google Gemini and provides 46+ business intelligence tools that query live ERPNext data -- sales, finance, HR, inventory, CRM, and more -- directly from a chat interface.
+An intelligent conversational assistant for ERPNext, built on the Frappe framework. It connects to OpenAI, Anthropic Claude, or Google Gemini and provides 80 business intelligence tools that query live ERPNext data -- sales, finance, HR, inventory, CRM, and more -- directly from a chat interface.
 
-Version 0.0.1 | License: MIT | Author: Sanjay Kumar
+Version 1.0.0 | License: MIT | Author: Sanjay Kumar
 
 ---
 
@@ -11,12 +11,16 @@ Version 0.0.1 | License: MIT | Author: Sanjay Kumar
 ### Chat Interface
 - Modern single-page chat UI built with Vue 3, Vite, and Tailwind CSS
 - Sidebar with conversation history, provider switcher, and dark mode toggle
+- Fresh new chat with enabled input on every load
 - Responsive layout (desktop and mobile)
 - Markdown rendering (marked.js) with syntax highlighting (highlight.js)
+- Apache ECharts for inline chart rendering (bar, line, pie, stacked, horizontal bar)
 - PDF export of individual messages or full conversations
+- File upload with LLM Vision API support (images, PDFs)
+- Voice input/output (speech-to-text, text-to-speech)
 
 ### AI Providers
-- OpenAI: GPT-4o, GPT-4-Turbo, GPT-3.5-Turbo
+- OpenAI: GPT-4o, GPT-4o-mini, GPT-4-Turbo, GPT-3.5-Turbo
 - Anthropic Claude: Opus 4.5, Sonnet 4.5, Haiku 4.5
 - Google Gemini
 - Switch providers on the fly from the sidebar
@@ -25,47 +29,46 @@ Version 0.0.1 | License: MIT | Author: Sanjay Kumar
 - Token-by-token streaming via Frappe Realtime (Socket.IO / WebSocket)
 - Typing indicator while the AI is generating a response
 
-### ERPNext Business Intelligence Tools (46+)
+### ERPNext Business Intelligence Tools (80)
 
-**CRM** -- Lead stats, opportunity pipeline, lead conversion rates, sales funnel, lead source analysis
+**CRM (6)** -- Lead statistics, opportunity pipeline, lead conversion rates, sales funnel, lead source analysis, opportunity by stage
 
-**Sales / Selling** -- Sales analytics, top customers, sales trend, revenue by territory, revenue by item group
+**Sales / Selling (5)** -- Sales analytics, top customers, sales trend, revenue by territory, revenue by item group
 
-**Buying / Purchase** -- Purchase analytics, supplier performance, purchase trend, purchase by item group
+**Buying / Purchase (4)** -- Purchase analytics, supplier performance, purchase trend, purchase by item group
 
-**Finance** -- Financial summary, cash flow, GL analytics, profitability, financial ratios, budget vs actual, receivables aging, payables aging, working capital, CFO dashboard
+**Finance (38)** -- Financial summary, cash flow analysis, multi-dimensional analytics, financial overview, monthly comparison, CFO dashboard (comprehensive BI cards with YoY), GL summary, trial balance, account statement, budget vs actual, budget variance, cash flow statement, cash flow trend, bank balance, receivable aging, top debtors, payable aging, top creditors, profitability by customer/item/territory, liquidity/profitability/efficiency ratios, working capital summary, cash conversion cycle, consolidated reports, session management (subsidiaries toggle, target currency)
 
-**Inventory / Stock** -- Stock summary, low stock alerts, stock movement, stock ageing
+**Inventory / Stock (4)** -- Stock summary, low stock alerts, stock movement, stock ageing
 
-**HRMS** -- Employee count, attendance summary, leave balance, payroll summary, department-wise salary, employee turnover
+**HRMS (6)** -- Employee count, attendance summary, leave balance, payroll summary, department-wise salary, employee turnover
 
-**IDP (Intelligent Document Processing)** -- Document extraction via LLM Vision API, ERPNext record creation from extracted data, document comparison
+**IDP (3)** -- Document extraction via LLM Vision API (any language, any format), ERPNext record creation from extracted data, document comparison for reconciliation
 
-**Predictive Analytics** -- Sales forecast, demand forecast, cash flow forecast, anomaly detection
+**Predictive Analytics (5)** -- Revenue forecast, territory forecast, demand forecast, cash flow forecast, anomaly detection (statistical methods: z-score, IQR)
 
-**Operations (CRUD)** -- Create, search, and update ERPNext records through conversational commands
+**Operations / CRUD (9)** -- Create leads, opportunities, todos; search customers, items, documents; update lead status, opportunity status, todos
 
-**Consolidation** -- Cross-company consolidated reports for multi-company setups
-
-**Session** -- Include-subsidiaries toggle, target currency selection
+See [docs/TOOLS_REFERENCE.md](../docs/TOOLS_REFERENCE.md) for the complete tool reference with parameters.
 
 ### Multi-Company and Multi-Currency
 - Every tool accepts a `company` parameter (defaults to the user's default company)
 - Monetary aggregations use `base_*` fields for company-currency consistency
 - Cross-company consolidated reports for group-level analysis
 - Per-conversation target currency selection
+- Include-subsidiaries toggle for automatic child company inclusion
 
 ### Additional Capabilities
-- @mention system for inline context (see below)
-- File upload with LLM Vision API support (images, PDFs)
-- Voice input/output (speech-to-text, text-to-speech)
+- @mention system for inline context (company, period, cost center, department, warehouse, customer, item, accounting dimensions)
 - Token usage tracking and cost estimation per request
 - Scheduled reports with email and PDF delivery
 - Multi-agent orchestration for complex, multi-step queries
 - Context optimization: last 20 messages retained, chart data stripped from history
 - Configurable AI persona, system prompt, and response language (10 languages)
+- IDP output language setting (extract data in any configured language)
 - Per-conversation language override
 - Tool plugin system for extending with custom tools from external Frappe apps
+- Cascade deletion of conversations (messages and token usage cleaned up automatically)
 
 ---
 
@@ -102,7 +105,7 @@ bench restart
 For IDP (document processing) features, install optional dependencies:
 
 ```bash
-pip install pypdf>=4.0 openpyxl>=3.1 python-docx>=1.1
+pip install python-docx>=1.1
 ```
 
 Or install via the extras group:
@@ -110,6 +113,8 @@ Or install via the extras group:
 ```bash
 pip install ai_chatbot[idp]
 ```
+
+Note: `pypdf` and `openpyxl` are already provided by the Frappe framework.
 
 ---
 
@@ -122,6 +127,7 @@ pip install ai_chatbot[idp]
 5. Optionally configure:
    - AI persona and system prompt
    - Default response language
+   - IDP output language (Extract Data In)
    - Scheduled report settings
 
 ---
@@ -145,10 +151,13 @@ Type natural-language questions about your business data. Examples:
 | Show expense breakdown by cost center | Chart |
 | Create a new Lead for John Doe from Acme Corp | Record creation |
 | Compare sales this month vs last month | Table |
+| Show CFO dashboard | BI dashboard with cards |
+| Forecast revenue for next 3 months | Chart with confidence intervals |
+| Extract data from this invoice | Document processing |
 
 Charts are rendered with Apache ECharts. The backend returns `echart_option` objects; the frontend renders them inline in the chat.
 
-See [docs/SAMPLE_USER_PROMPT.md](../docs/SAMPLE_USER_PROMPT.md) for a full list of sample prompts organized by category.
+See [docs/SAMPLE_USER_PROMPT.md](../docs/SAMPLE_USER_PROMPT.md) for 80+ sample prompts organized by category.
 
 ---
 
@@ -166,6 +175,8 @@ Type `@` in the chat input to insert contextual filters. Mentions are resolved t
 | `@customer` | Filter by customer | `@customer:John Doe` |
 | `@item` | Filter by item | `@item:Widget A` |
 | `@accounting_dimension` | Filter by custom dimension | `@accounting_dimension:Project X` |
+
+See [docs/AT_MENTION_GUIDE.md](../docs/AT_MENTION_GUIDE.md) for the complete guide.
 
 ---
 
@@ -187,29 +198,28 @@ ai_chatbot/                          # Python package (Frappe backend)
 |-- core/
 |   |-- config.py                    # App configuration helpers
 |   |-- constants.py                 # App-wide constants
-|   |-- exceptions.py                # Custom exception classes
-|   |-- logger.py                    # Logging utilities
+|   |-- prompts.py                   # System prompt builder
+|   |-- session_context.py           # Per-conversation session state
+|   |-- token_tracker.py             # Token usage and cost tracking
 |
 |-- tools/
 |   |-- registry.py                  # Decorator-based tool registration system
 |   |-- base.py                      # Backward-compatible wrapper
-|   |-- crm.py                       # CRM tools
-|   |-- selling.py                   # Selling tools
-|   |-- buying.py                    # Buying tools
-|   |-- account.py                   # Accounting tools
-|   |-- stock.py                     # Inventory tools
-|   |-- hrms.py                      # HRMS tools (loaded if HRMS installed)
-|   |-- idp.py                       # Intelligent Document Processing
-|   |-- session.py                   # Session context tools
-|   |-- consolidation.py             # Cross-company consolidation
-|   |-- finance/                     # Finance sub-modules
-|   |   |-- analytics.py, budget.py, cash_flow.py, cfo.py,
-|   |   |-- gl_analytics.py, payables.py, profitability.py,
+|   |-- crm.py                       # CRM tools (6)
+|   |-- selling.py                   # Selling tools (5)
+|   |-- buying.py                    # Buying tools (4)
+|   |-- stock.py                     # Inventory tools (4)
+|   |-- hrms.py                      # HRMS tools (6, loaded if HRMS installed)
+|   |-- idp.py                       # Intelligent Document Processing (3)
+|   |-- session.py                   # Session context tools (2)
+|   |-- finance/                     # Finance sub-modules (38)
+|   |   |-- account.py, analytics.py, budget.py, cash_flow.py, cfo.py,
+|   |   |-- consolidation.py, gl_analytics.py, payables.py, profitability.py,
 |   |   |-- ratios.py, receivables.py, working_capital.py
-|   |-- predictive/                  # Predictive analytics sub-modules
+|   |-- predictive/                  # Predictive analytics sub-modules (5)
 |   |   |-- sales_forecast.py, demand_forecast.py,
 |   |   |-- cash_flow_forecast.py, anomaly_detection.py
-|   |-- operations/                  # CRUD operations
+|   |-- operations/                  # CRUD operations (9)
 |       |-- create.py, search.py, update.py
 |
 |-- utils/
@@ -217,6 +227,16 @@ ai_chatbot/                          # Python package (Frappe backend)
 |
 |-- automation/
 |   |-- scheduled_reports.py         # Scheduler-driven report generation
+|
+|-- idp/
+|   |-- mapper.py                    # Document extraction and field mapping
+|   |-- content_extractor.py         # File content extraction (PDF, image, Excel, Word)
+|   |-- schema_builder.py            # DocType schema generation for LLM
+|
+|-- data/
+|   |-- charts.py                    # ECharts option builders
+|   |-- currency.py                  # Currency response formatting
+|   |-- grouping.py                  # Multi-dimensional grouping utilities
 |
 |-- public/frontend/                 # Built frontend assets (generated)
 
@@ -336,7 +356,7 @@ pre-commit run --all-files
 
 **Python** (runtime): frappe, openai, anthropic, twilio==8.5.0, requests
 
-**Python** (optional, for IDP): pypdf>=4.0, openpyxl>=3.1, python-docx>=1.1
+**Python** (optional, for IDP): python-docx>=1.1 (pypdf and openpyxl provided by Frappe)
 
 **Frontend**: vue 3, vue-router, marked, highlight.js, lucide-vue-next, tailwindcss, echarts, socket.io-client
 
@@ -348,9 +368,9 @@ pre-commit run --all-files
 |----------|-------------|
 | [PROJECT_OVERVIEW.md](../docs/PROJECT_OVERVIEW.md) | High-level architecture and design decisions |
 | [PROJECT_STRUCTURE.md](../docs/PROJECT_STRUCTURE.md) | Detailed file and directory structure |
-| [API.md](../docs/API.md) | Backend API endpoint reference |
-| [SAMPLE_USER_PROMPT.md](../docs/SAMPLE_USER_PROMPT.md) | Example prompts organized by category |
-| [ENHANCEMENT_ROADMAP.md](../docs/ENHANCEMENT_ROADMAP.md) | Planned features and development phases |
+| [TOOLS_REFERENCE.md](../docs/TOOLS_REFERENCE.md) | Complete tool reference with parameters (80 tools) |
+| [SAMPLE_USER_PROMPT.md](../docs/SAMPLE_USER_PROMPT.md) | 80+ example prompts organized by category |
+| [AT_MENTION_GUIDE.md](../docs/AT_MENTION_GUIDE.md) | @mention system usage guide |
 
 ---
 

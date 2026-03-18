@@ -52,6 +52,17 @@
   "automation_tab",
   "automation_section",
   "enable_automation",
+  "legacy_section",
+  "openai_enabled",
+  "openai_api_key",
+  "openai_model",
+  "openai_temperature",
+  "openai_max_tokens",
+  "claude_enabled",
+  "claude_api_key",
+  "claude_model",
+  "claude_temperature",
+  "claude_max_tokens"
  ],
  "fields": [
   {
@@ -336,11 +347,87 @@
    "fieldtype": "Check",
    "label": "Enable Automation"
   },
+  {
+   "fieldname": "legacy_section",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Legacy Fields (Hidden)"
+  },
+  {
+   "default": "0",
+   "fieldname": "openai_enabled",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Enable OpenAI (Legacy)"
+  },
+  {
+   "fieldname": "openai_api_key",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "OpenAI API Key (Legacy)"
+  },
+  {
+   "default": "gpt-4o",
+   "fieldname": "openai_model",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "OpenAI Model (Legacy)",
+   "options": "gpt-4o\ngpt-4o-mini\ngpt-4-turbo\ngpt-3.5-turbo"
+  },
+  {
+   "default": "0.7",
+   "fieldname": "openai_temperature",
+   "fieldtype": "Float",
+   "hidden": 1,
+   "label": "Temperature (Legacy)"
+  },
+  {
+   "default": "4000",
+   "fieldname": "openai_max_tokens",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Max Tokens (Legacy)"
+  },
+  {
+   "default": "0",
+   "fieldname": "claude_enabled",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Enable Claude (Legacy)"
+  },
+  {
+   "fieldname": "claude_api_key",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Claude API Key (Legacy)"
+  },
+  {
+   "default": "claude-sonnet-4-5-20250929",
+   "fieldname": "claude_model",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Claude Model (Legacy)",
+   "options": "claude-opus-4-5-20251101\nclaude-sonnet-4-5-20250929\nclaude-haiku-4-5-20251001"
+  },
+  {
+   "default": "0.7",
+   "fieldname": "claude_temperature",
+   "fieldtype": "Float",
+   "hidden": 1,
+   "label": "Temperature (Legacy)"
+  },
+  {
+   "default": "4000",
+   "fieldname": "claude_max_tokens",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Max Tokens (Legacy)"
+  }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-03-17 21:59:34.814020",
+ "modified": "2026-03-18 14:38:25.434061",
  "modified_by": "Administrator",
  "module": "Chatbot",
  "name": "Chatbot Settings",
@@ -360,6 +447,5 @@
  "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": [],
- "track_changes": 1
+ "states": []
 }

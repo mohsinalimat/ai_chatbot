@@ -214,14 +214,14 @@ def _ensure_tools_loaded():
 	# ERPNext tools (CRM, selling, buying, finance, inventory, operations,
 	# IDP, predictive analytics, session management)
 	if is_erpnext_installed():
-		import ai_chatbot.tools.account
 		import ai_chatbot.tools.buying
-		import ai_chatbot.tools.consolidation
 		import ai_chatbot.tools.crm
+		import ai_chatbot.tools.finance.account
 		import ai_chatbot.tools.finance.analytics
 		import ai_chatbot.tools.finance.budget
 		import ai_chatbot.tools.finance.cash_flow
 		import ai_chatbot.tools.finance.cfo
+		import ai_chatbot.tools.finance.consolidation
 		import ai_chatbot.tools.finance.gl_analytics
 		import ai_chatbot.tools.finance.payables
 		import ai_chatbot.tools.finance.profitability

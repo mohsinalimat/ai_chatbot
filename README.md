@@ -91,7 +91,7 @@ Extract structured data from uploaded documents (invoices, POs, receipts, quotat
 
 **Operations / CRUD (9)** -- Create leads, opportunities, todos; search customers, items, documents; update lead status, opportunity status, todos
 
-See [docs/TOOLS_REFERENCE.md](../docs/TOOLS_REFERENCE.md) for the complete tool reference with parameters.
+See [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) for the complete tool reference with parameters.
 
 
 ### Additional Capabilities
@@ -181,7 +181,7 @@ Type natural-language questions about your business data. Examples:
 
 Charts are rendered with Apache ECharts. The backend returns `echart_option` objects; the frontend renders them inline in the chat.
 
-See [docs/SAMPLE_USER_PROMPT.md](../docs/SAMPLE_USER_PROMPT.md) for 80+ sample prompts organized by category.
+See [docs/SAMPLE_USER_PROMPT.md](docs/SAMPLE_USER_PROMPT.md) for 80+ sample prompts organized by category.
 
 ---
 
@@ -200,7 +200,7 @@ Type `@` in the chat input to insert contextual filters. Mentions are resolved t
 | `@item` | Filter by item | `@item:Widget A` |
 | `@accounting_dimension` | Filter by custom dimension | `@accounting_dimension:Project X` |
 
-See [docs/AT_MENTION_GUIDE.md](../docs/AT_MENTION_GUIDE.md) for the complete guide.
+See [docs/AT_MENTION_GUIDE.md](docs/AT_MENTION_GUIDE.md) for the complete guide.
 
 ---
 
@@ -388,11 +388,11 @@ pre-commit run --all-files
 
 | Document | Description |
 |----------|-------------|
-| [PROJECT_OVERVIEW.md](../docs/PROJECT_OVERVIEW.md) | High-level architecture and design decisions |
-| [PROJECT_STRUCTURE.md](../docs/PROJECT_STRUCTURE.md) | Detailed file and directory structure |
-| [TOOLS_REFERENCE.md](../docs/TOOLS_REFERENCE.md) | Complete tool reference with parameters (80 tools) |
-| [SAMPLE_USER_PROMPT.md](../docs/SAMPLE_USER_PROMPT.md) | 80+ example prompts organized by category |
-| [AT_MENTION_GUIDE.md](../docs/AT_MENTION_GUIDE.md) | @mention system usage guide |
+| [PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | High-level architecture and design decisions |
+| [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | Detailed file and directory structure |
+| [TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Complete tool reference with parameters (80 tools) |
+| [SAMPLE_USER_PROMPT.md](docs/SAMPLE_USER_PROMPT.md) | 80+ example prompts organized by category |
+| [AT_MENTION_GUIDE.md](docs/AT_MENTION_GUIDE.md) | @mention system usage guide |
 
 ---
 

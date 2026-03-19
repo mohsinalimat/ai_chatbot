@@ -360,6 +360,26 @@ const loadConversations = async () => {
 }
 
 const handleNewChat = async () => {
+  // Set up a pending (unsaved) conversation — no DB record yet.
+  // The actual record is created lazily when the user sends the first message.
+  currentConversation.value = {
+    name: null,
+    title: 'New Chat',
+    ai_provider: selectedProvider.value,
+    _pending: true,
+  }
+  messages.value = []
+  selectedLanguage.value = ''
+}
+
+/**
+ * Materialise a pending conversation into a real DB record.
+ * Called once, right before the first message is sent.
+ */
+const ensureConversation = async () => {
+  if (currentConversation.value && !currentConversation.value._pending) {
+    return true // Already persisted
+  }
   try {
     const response = await chatAPI.createConversation(
       'New Chat',
@@ -370,20 +390,19 @@ const handleNewChat = async () => {
       const newConv = conversations.value.find(c => c.name === response.conversation_id)
       if (newConv) {
         currentConversation.value = newConv
-        messages.value = []
-        selectedLanguage.value = ''
       } else {
         currentConversation.value = response.data || {
           name: response.conversation_id,
           title: 'New Chat',
           ai_provider: selectedProvider.value,
         }
-        messages.value = []
-        selectedLanguage.value = ''
       }
+      return true
     }
+    return false
   } catch (error) {
     console.error('Error creating conversation:', error)
+    return false
   }
 }
 
@@ -422,6 +441,15 @@ const handleSendMessage = async (payload) => {
   const voiceInput = typeof payload === 'string' ? false : (payload.voiceInput || false)
 
   if (!currentConversation.value || (!message.trim() && attachments.length === 0)) return
+
+  // Lazy-create the conversation record on first message
+  if (currentConversation.value._pending) {
+    const created = await ensureConversation()
+    if (!created) {
+      displayError.value = 'Failed to create conversation. Please try again.'
+      return
+    }
+  }
 
   // Clear any previous error
   displayError.value = null
@@ -555,7 +583,7 @@ const handleChangeProvider = (provider) => {
 
 const handleChangeLanguage = async (language) => {
   selectedLanguage.value = language
-  if (currentConversation.value) {
+  if (currentConversation.value && !currentConversation.value._pending) {
     try {
       await chatAPI.setConversationLanguage(currentConversation.value.name, language)
     } catch (error) {

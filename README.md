@@ -106,6 +106,8 @@ See [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) for the complete tool ref
 - Tool plugin system for extending with custom tools from external Frappe apps
 - Cascade deletion of conversations (messages and token usage cleaned up automatically)
 
+---
+## Demo
 
 [![AI Chatbot Demo](https://img.youtube.com/vi/1Ad5fM6hugg/0.jpg)](https://www.youtube.com/watch?v=1Ad5fM6hugg)
 

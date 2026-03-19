@@ -123,19 +123,20 @@
 
           <!-- Microphone Button -->
           <button
-            v-if="voiceSupported"
             type="button"
             @click="toggleVoice"
-            :disabled="disabled && !isStreaming"
+            :disabled="!voiceSupported || (disabled && !isStreaming)"
             :class="[
               'h-10 w-10 flex-shrink-0 rounded-lg flex items-center justify-center transition-all',
               isListening
                 ? 'bg-red-500 hover:bg-red-600 animate-recording'
-                : 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
+                : 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700',
+              !voiceSupported ? 'opacity-50 cursor-not-allowed' : ''
             ]"
-            :title="isListening ? 'Stop recording' : 'Voice input'"
+            :title="!voiceSupported ? 'Voice input is not supported in this browser. Use Chrome, Edge, or Safari.' : isListening ? 'Stop recording' : 'Voice input'"
           >
-            <Mic :size="20" :class="isListening ? 'text-white' : 'text-gray-500 dark:text-gray-400'" />
+            <MicOff v-if="!voiceSupported" :size="20" class="text-gray-400 dark:text-gray-500" />
+            <Mic v-else :size="20" :class="isListening ? 'text-white' : 'text-gray-500 dark:text-gray-400'" />
           </button>
 
           <!-- Help Button -->
@@ -189,7 +190,7 @@
 
 <script setup>
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
-import { Send, Square, Paperclip, Mic, X, FileText, AtSign, HelpCircle } from 'lucide-vue-next'
+import { Send, Square, Paperclip, Mic, MicOff, X, FileText, AtSign, HelpCircle } from 'lucide-vue-next'
 import HelpModal from './HelpModal.vue'
 import { useVoiceInput } from '../composables/useVoiceInput'
 import { useFileUpload, ALLOWED_TYPES } from '../composables/useFileUpload'

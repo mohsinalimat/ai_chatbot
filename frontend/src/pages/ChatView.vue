@@ -7,18 +7,13 @@
       <Sidebar
         :conversations="conversations"
         :current-conversation="currentConversation"
-        :selected-provider="selectedProvider"
         :sidebar-collapsed="sidebarCollapsed"
         :search-results="searchResults"
         :is-searching="isSearching"
-        :selected-language="selectedLanguage"
-        :available-languages="availableLanguages"
         @new-chat="handleNewChat"
         @select-conversation="handleSelectConversation"
         @delete-conversation="handleDeleteConversation"
         @toggle-sidebar="toggleSidebar"
-        @change-provider="handleChangeProvider"
-        @change-language="handleChangeLanguage"
         @search="handleSearch"
       />
     </div>
@@ -52,7 +47,7 @@
 
         <div class="w-full max-w-2xl">
           <ChatInput
-            :disabled="isLoading || !currentConversation"
+            :disabled="isLoading"
             :is-streaming="isStreaming"
             @send="handleSendMessage"
             @stop="handleStopGeneration"
@@ -181,21 +176,25 @@
           </div>
         </div>
 
-        <!-- Input Area (bottom-pinned) -->
-        <ChatInput
-          :disabled="isLoading || !currentConversation"
-          :is-streaming="isStreaming"
-          @send="handleSendMessage"
-          @stop="handleStopGeneration"
-          @voice-start="warmupTTS"
-        />
+        <!-- Input Area (bottom-pinned, floating) -->
+        <div class="relative">
+          <!-- Gradient fade above input -->
+          <div class="absolute -top-8 left-0 right-0 h-8 bg-gradient-to-t from-white dark:from-gray-900 to-transparent pointer-events-none"></div>
+          <ChatInput
+            :disabled="isLoading"
+            :is-streaming="isStreaming"
+            @send="handleSendMessage"
+            @stop="handleStopGeneration"
+            @voice-start="warmupTTS"
+          />
+        </div>
       </template>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, provide, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import Sidebar from '../components/Sidebar.vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import ChatInput from '../components/ChatInput.vue'
@@ -208,6 +207,9 @@ import { useStreaming } from '../composables/useStreaming'
 import { useSocket } from '../composables/useSocket'
 import logoSvg from '../assets/logo.svg'
 import { useVoiceOutput } from '../composables/useVoiceOutput'
+
+// Provide logoSvg to all descendant components
+provide('logoSvg', logoSvg)
 
 const conversations = ref([])
 const currentConversation = ref(null)
@@ -225,7 +227,7 @@ const availableLanguages = ref([])
 const userInfo = ref({ fullname: '', avatar: '' })
 
 // Sidebar toggle (persisted in localStorage)
-const sidebarCollapsed = ref(localStorage.getItem('ai_chatbot_sidebar') === 'collapsed')
+const sidebarCollapsed = ref(localStorage.getItem('ai_chatbot_sidebar') !== 'expanded')
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -340,8 +342,10 @@ onMounted(async () => {
     initSocket()
   }
 
-  // Always start with a fresh new chat (enabled input + greeting)
-  await handleNewChat()
+  // Show greeting state (no conversation created yet — lazy creation on first message)
+  currentConversation.value = null
+  messages.value = []
+  selectedLanguage.value = ''
 })
 
 onUnmounted(() => {
@@ -359,27 +363,17 @@ const loadConversations = async () => {
   }
 }
 
-const handleNewChat = async () => {
-  // Set up a pending (unsaved) conversation — no DB record yet.
-  // The actual record is created lazily when the user sends the first message.
-  currentConversation.value = {
-    name: null,
-    title: 'New Chat',
-    ai_provider: selectedProvider.value,
-    _pending: true,
-  }
+const handleNewChat = () => {
+  // Reset to greeting state — conversation is created lazily on first message
+  stopListening()
+  resetStreaming()
+  currentConversation.value = null
   messages.value = []
   selectedLanguage.value = ''
 }
 
-/**
- * Materialise a pending conversation into a real DB record.
- * Called once, right before the first message is sent.
- */
 const ensureConversation = async () => {
-  if (currentConversation.value && !currentConversation.value._pending) {
-    return true // Already persisted
-  }
+  if (currentConversation.value) return true
   try {
     const response = await chatAPI.createConversation(
       'New Chat',
@@ -388,22 +382,18 @@ const ensureConversation = async () => {
     if (response.success) {
       await loadConversations()
       const newConv = conversations.value.find(c => c.name === response.conversation_id)
-      if (newConv) {
-        currentConversation.value = newConv
-      } else {
-        currentConversation.value = response.data || {
-          name: response.conversation_id,
-          title: 'New Chat',
-          ai_provider: selectedProvider.value,
-        }
+      currentConversation.value = newConv || response.data || {
+        name: response.conversation_id,
+        title: 'New Chat',
+        ai_provider: selectedProvider.value,
       }
       return true
     }
     return false
   } catch (error) {
     console.error('Error creating conversation:', error)
-    return false
   }
+  return false
 }
 
 const handleSelectConversation = async (conversation) => {
@@ -440,7 +430,16 @@ const handleSendMessage = async (payload) => {
   const attachments = typeof payload === 'string' ? [] : (payload.attachments || [])
   const voiceInput = typeof payload === 'string' ? false : (payload.voiceInput || false)
 
-  if (!currentConversation.value || (!message.trim() && attachments.length === 0)) return
+  if (!message.trim() && attachments.length === 0) return
+
+  // Lazily create conversation on first message
+  if (!currentConversation.value) {
+    const created = await ensureConversation()
+    if (!created) {
+      displayError.value = 'Failed to create conversation. Please try again.'
+      return
+    }
+  }
 
   // Lazy-create the conversation record on first message
   if (currentConversation.value._pending) {
@@ -575,10 +574,6 @@ const handleDeleteConversation = async (conversationId) => {
   } catch (error) {
     console.error('Error deleting conversation:', error)
   }
-}
-
-const handleChangeProvider = (provider) => {
-  selectedProvider.value = provider
 }
 
 const handleChangeLanguage = async (language) => {

@@ -19,7 +19,9 @@
 </template>
 
 <script setup>
-import logoSvg from '../assets/logo.svg'
+import { inject } from 'vue'
+
+const logoSvg = inject('logoSvg')
 
 defineProps({
   processStep: {

@@ -59,6 +59,29 @@ export function useVoiceOutput() {
     warmedUp = true
   }
 
+  /**
+   * Get the preferred voice language from localStorage (shared with useVoiceInput).
+   * Falls back to navigator.language then 'en-US'.
+   */
+  function getPreferredLang() {
+    return localStorage.getItem('ai_chatbot_voice_lang') || navigator.language || 'en-US'
+  }
+
+  /**
+   * Find the best SpeechSynthesisVoice matching a BCP-47 language code.
+   * Tries exact match first (e.g. "hi-IN"), then prefix match (e.g. "hi").
+   */
+  function findVoice(lang) {
+    const voices = window.speechSynthesis.getVoices()
+    if (!voices.length || !lang) return null
+    // Exact match
+    const exact = voices.find(v => v.lang === lang)
+    if (exact) return exact
+    // Prefix match (e.g. "hi-IN" matches voice with lang "hi")
+    const prefix = lang.split('-')[0]
+    return voices.find(v => v.lang.startsWith(prefix)) || null
+  }
+
   function speak(text) {
     if (!isSupported.value) return
 
@@ -68,10 +91,17 @@ export function useVoiceOutput() {
     const cleanText = stripMarkdown(text)
     if (!cleanText) return
 
+    const lang = getPreferredLang()
     const utterance = new SpeechSynthesisUtterance(cleanText)
     utterance.rate = 1.0
     utterance.pitch = 1.0
-    utterance.lang = navigator.language || 'en-US'
+    utterance.lang = lang
+
+    // Try to assign a voice matching the selected language
+    const voice = findVoice(lang)
+    if (voice) {
+      utterance.voice = voice
+    }
 
     utterance.onstart = () => {
       isSpeaking.value = true

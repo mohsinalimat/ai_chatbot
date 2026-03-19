@@ -24,6 +24,7 @@ export function useVoiceInput(options = {}) {
   const interimTranscript = ref('')
   const error = ref(null)
   const silenceTimeout = ref(false)
+  const language = ref(localStorage.getItem('ai_chatbot_voice_lang') || '')
 
   // Feature detection
   const SpeechRecognitionAPI =
@@ -70,7 +71,7 @@ export function useVoiceInput(options = {}) {
     recognition = new SpeechRecognitionAPI()
     recognition.continuous = true // Keep listening until stopped
     recognition.interimResults = true // Show interim results for feedback
-    recognition.lang = navigator.language || 'en-US'
+    recognition.lang = language.value || navigator.language || 'en-US'
 
     recognition.onstart = () => {
       isListening.value = true
@@ -147,6 +148,11 @@ export function useVoiceInput(options = {}) {
     silenceTimeout.value = false
   }
 
+  function setLanguage(lang) {
+    language.value = lang
+    localStorage.setItem('ai_chatbot_voice_lang', lang)
+  }
+
   // Clean up on component unmount
   onUnmounted(() => {
     _resetSilenceTimer()
@@ -163,8 +169,10 @@ export function useVoiceInput(options = {}) {
     error: readonly(error),
     isSupported: readonly(isSupported),
     silenceTimeout: readonly(silenceTimeout),
+    language: readonly(language),
     startListening,
     stopListening,
     resetTranscript,
+    setLanguage,
   }
 }

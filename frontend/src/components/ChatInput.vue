@@ -1,8 +1,8 @@
 <!-- Copyright (c) 2026, Sanjay Kumar and contributors -->
 <!-- For license information, please see license.txt -->
 <template>
-  <div class="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
-    <div class="max-w-4xl mx-auto">
+  <div class="max-w-3xl mx-auto mb-4 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
+    <div>
       <form @submit.prevent="handleSubmit" class="relative">
         <!-- Attachment Preview Strip -->
         <div v-if="hasFiles" class="mb-2 flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -49,6 +49,17 @@
             class="hidden"
             @change="handleFileSelect"
           />
+
+          <!-- Help Button -->
+          <button
+            type="button"
+            @click="showHelpModal = true"
+            :disabled="disabled && !isStreaming"
+            class="h-10 w-10 flex-shrink-0 rounded-lg flex items-center justify-center bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Sample prompts &amp; help"
+          >
+            <HelpCircle :size="20" class="text-gray-500 dark:text-gray-400" />
+          </button>
 
           <!-- Textarea with drag-and-drop -->
           <div
@@ -121,35 +132,6 @@
             </div>
           </div>
 
-          <!-- Microphone Button -->
-          <button
-            type="button"
-            @click="toggleVoice"
-            :disabled="!voiceSupported || (disabled && !isStreaming)"
-            :class="[
-              'h-10 w-10 flex-shrink-0 rounded-lg flex items-center justify-center transition-all',
-              isListening
-                ? 'bg-red-500 hover:bg-red-600 animate-recording'
-                : 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700',
-              !voiceSupported ? 'opacity-50 cursor-not-allowed' : ''
-            ]"
-            :title="!voiceSupported ? 'Voice input is not supported in this browser. Use Chrome, Edge, or Safari.' : isListening ? 'Stop recording' : 'Voice input'"
-          >
-            <MicOff v-if="!voiceSupported" :size="20" class="text-gray-400 dark:text-gray-500" />
-            <Mic v-else :size="20" :class="isListening ? 'text-white' : 'text-gray-500 dark:text-gray-400'" />
-          </button>
-
-          <!-- Help Button -->
-          <button
-            type="button"
-            @click="showHelpModal = true"
-            :disabled="disabled && !isStreaming"
-            class="h-10 w-10 flex-shrink-0 rounded-lg flex items-center justify-center bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Sample prompts &amp; help"
-          >
-            <HelpCircle :size="20" class="text-gray-500 dark:text-gray-400" />
-          </button>
-
           <!-- Stop Button (shown during streaming) -->
           <button
             v-if="isStreaming"
@@ -171,6 +153,55 @@
           >
             <Send :size="20" />
           </button>
+
+          <!-- Microphone Button with Language Selector -->
+          <div class="relative flex-shrink-0 flex items-center">
+            <button
+              type="button"
+              @click="toggleVoice"
+              :disabled="!voiceSupported || (disabled && !isStreaming)"
+              :class="[
+                'h-10 w-10 rounded-lg flex items-center justify-center transition-all',
+                isListening
+                  ? 'bg-red-500 hover:bg-red-600 animate-recording'
+                  : 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700',
+                !voiceSupported ? 'opacity-50 cursor-not-allowed' : ''
+              ]"
+              :title="!voiceSupported ? 'Voice input is not supported in this browser. Use Chrome, Edge, or Safari.' : isListening ? 'Stop recording' : 'Voice input'"
+            >
+              <MicOff v-if="!voiceSupported" :size="20" class="text-gray-400 dark:text-gray-500" />
+              <Mic v-else :size="20" :class="isListening ? 'text-white' : 'text-gray-500 dark:text-gray-400'" />
+            </button>
+            <!-- Language chevron -->
+            <button
+              v-if="voiceSupported"
+              type="button"
+              @click="showVoiceLangDropdown = !showVoiceLangDropdown"
+              class="h-6 w-5 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors -ml-1"
+              title="Voice language"
+            >
+              <ChevronDown :size="12" />
+            </button>
+            <!-- Language dropdown -->
+            <div
+              v-if="showVoiceLangDropdown"
+              class="absolute bottom-full right-0 mb-1 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden z-30"
+            >
+              <button
+                v-for="lang in voiceLanguageOptions"
+                :key="lang.code"
+                @click="selectVoiceLanguage(lang.code)"
+                :class="[
+                  'w-full px-3 py-1.5 text-xs text-left transition-colors',
+                  lang.code === voiceLanguage
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                ]"
+              >
+                {{ lang.label }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Error Display -->
@@ -190,7 +221,7 @@
 
 <script setup>
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
-import { Send, Square, Paperclip, Mic, MicOff, X, FileText, AtSign, HelpCircle } from 'lucide-vue-next'
+import { Send, Square, Paperclip, Mic, MicOff, X, FileText, AtSign, HelpCircle, ChevronDown } from 'lucide-vue-next'
 import HelpModal from './HelpModal.vue'
 import { useVoiceInput } from '../composables/useVoiceInput'
 import { useFileUpload, ALLOWED_TYPES } from '../composables/useFileUpload'
@@ -213,6 +244,20 @@ const mentionDropdownRef = ref(null)
 const isDragOver = ref(false)
 const isVoiceMessage = ref(false)
 const showHelpModal = ref(false)
+const showVoiceLangDropdown = ref(false)
+
+const voiceLanguageOptions = [
+  { code: '', label: 'Auto' },
+  { code: 'en-US', label: 'English' },
+  { code: 'hi-IN', label: 'Hindi' },
+  { code: 'ar-SA', label: 'Arabic' },
+  { code: 'es-ES', label: 'Spanish' },
+  { code: 'fr-FR', label: 'French' },
+  { code: 'de-DE', label: 'German' },
+  { code: 'zh-CN', label: 'Chinese' },
+  { code: 'ja-JP', label: 'Japanese' },
+  { code: 'pt-BR', label: 'Portuguese' },
+]
 
 const handleSelectPrompt = (text) => {
   inputValue.value = text
@@ -231,10 +276,22 @@ const {
   error: voiceError,
   isSupported: voiceSupported,
   silenceTimeout,
+  language: voiceLanguage,
   startListening: startVoice,
   stopListening: stopVoice,
   resetTranscript,
+  setLanguage: setVoiceLanguage,
 } = useVoiceInput({ autoSendDelay: 2000 })
+
+const currentVoiceLangLabel = computed(() => {
+  const match = voiceLanguageOptions.find(o => o.code === voiceLanguage.value)
+  return match ? match.label : 'Auto'
+})
+
+const selectVoiceLanguage = (code) => {
+  setVoiceLanguage(code)
+  showVoiceLangDropdown.value = false
+}
 
 // File upload
 const {
@@ -524,7 +581,7 @@ function closeMentionDropdown() {
   mentionSubOptions.value = []
 }
 
-// Close mention dropdown on click outside
+// Close dropdowns on click outside
 function handleClickOutside(event) {
   if (
     mentionDropdownRef.value &&
@@ -532,6 +589,10 @@ function handleClickOutside(event) {
     textareaRef.value !== event.target
   ) {
     closeMentionDropdown()
+  }
+  // Close voice language dropdown
+  if (showVoiceLangDropdown.value && !event.target.closest('.relative.flex-shrink-0')) {
+    showVoiceLangDropdown.value = false
   }
 }
 

@@ -164,7 +164,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, inject } from 'vue'
 import { Wrench, PenSquare, Volume2, VolumeX, FileText, Download, Loader2 } from 'lucide-vue-next'
 import { renderMarkdown } from '../utils/markdown'
 import { useVoiceOutput } from '../composables/useVoiceOutput'
@@ -172,7 +172,8 @@ import { chatAPI } from '../utils/api'
 import ChartMessage from './charts/ChartMessage.vue'
 import BiCards from './charts/BiCards.vue'
 import HierarchicalTable from './charts/HierarchicalTable.vue'
-import logoSvg from '../assets/logo.svg'
+
+const logoSvg = inject('logoSvg')
 
 const voiceOutput = useVoiceOutput()
 const isExporting = ref(false)

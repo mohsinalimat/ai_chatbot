@@ -1,3 +1,8 @@
+
+![AI Chatbot](screenshots/ai_chatbot_banner.png)
+
+---
+
 # AI Chatbot Application for Frappe/ERPNext
 
 > A modern, feature-rich AI chatbot application built with Frappe framework and Frappe UI, featuring OpenAI and Claude integration with powerful ERPNext business intelligence tools.

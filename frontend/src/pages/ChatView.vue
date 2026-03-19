@@ -441,15 +441,6 @@ const handleSendMessage = async (payload) => {
     }
   }
 
-  // Lazy-create the conversation record on first message
-  if (currentConversation.value._pending) {
-    const created = await ensureConversation()
-    if (!created) {
-      displayError.value = 'Failed to create conversation. Please try again.'
-      return
-    }
-  }
-
   // Clear any previous error
   displayError.value = null
 
@@ -573,17 +564,6 @@ const handleDeleteConversation = async (conversationId) => {
     }
   } catch (error) {
     console.error('Error deleting conversation:', error)
-  }
-}
-
-const handleChangeLanguage = async (language) => {
-  selectedLanguage.value = language
-  if (currentConversation.value && !currentConversation.value._pending) {
-    try {
-      await chatAPI.setConversationLanguage(currentConversation.value.name, language)
-    } catch (error) {
-      console.error('Error setting language:', error)
-    }
   }
 }
 

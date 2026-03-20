@@ -3,7 +3,9 @@
 """
 PDF Export API
 
-Generates downloadable PDFs from chat messages and conversations.
+Generates downloadable PDFs from chat messages and conversations
+using WeasyPrint (with wkhtmltopdf fallback).
+
 Reuses the HTML formatters from ``automation/formatters.py`` so that
 tables and charts render identically to scheduled-report PDFs.
 """
@@ -14,7 +16,6 @@ import json
 
 import frappe
 from frappe.utils import nowdate
-from frappe.utils.pdf import get_pdf
 
 from ai_chatbot.automation.formatters import (
 	_render_charts,
@@ -57,7 +58,9 @@ def export_message_pdf(message_name: str) -> dict:
 		)
 
 		# Generate PDF
-		pdf_bytes = get_pdf(html)
+		from ai_chatbot.utils.pdf import html_to_pdf
+
+		pdf_bytes = html_to_pdf(html)
 
 		# Save as a Frappe File so it can be downloaded
 		safe_title = _safe_filename(conversation.title or "chat")
@@ -123,7 +126,9 @@ def export_conversation_pdf(conversation_id: str) -> dict:
 			company=company,
 		)
 
-		pdf_bytes = get_pdf(html)
+		from ai_chatbot.utils.pdf import html_to_pdf
+
+		pdf_bytes = html_to_pdf(html)
 
 		safe_title = _safe_filename(conversation.title or "conversation")
 		fname = f"{safe_title}_{conversation_id}_{nowdate()}.pdf"

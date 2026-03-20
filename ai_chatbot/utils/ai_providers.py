@@ -164,6 +164,7 @@ class OpenAIProvider(AIProvider):
 			"temperature": self.temperature,
 			"max_tokens": self.max_tokens,
 			"stream": True,
+			"stream_options": {"include_usage": True},
 		}
 
 		if tools:
@@ -197,6 +198,15 @@ class OpenAIProvider(AIProvider):
 					chunk = json.loads(data)
 				except json.JSONDecodeError:
 					continue
+
+				# Usage data arrives in the final chunk (choices may be empty)
+				if chunk.get("usage"):
+					usage = chunk["usage"]
+					yield {
+						"type": "usage",
+						"prompt_tokens": usage.get("prompt_tokens", 0),
+						"completion_tokens": usage.get("completion_tokens", 0),
+					}
 
 				choice = chunk.get("choices", [{}])[0]
 				delta = choice.get("delta", {})
@@ -377,6 +387,10 @@ class ClaudeProvider(AIProvider):
 			current_tool_id = None
 			tool_input_json = ""
 
+			# Accumulate usage across message_start and message_delta
+			usage_prompt = 0
+			usage_completion = 0
+
 			for line in response.iter_lines():
 				if not line:
 					continue
@@ -392,7 +406,12 @@ class ClaudeProvider(AIProvider):
 
 				event_type = event.get("type")
 
-				if event_type == "content_block_start":
+				if event_type == "message_start":
+					# message_start contains input token count
+					msg_usage = event.get("message", {}).get("usage", {})
+					usage_prompt = msg_usage.get("input_tokens", 0)
+
+				elif event_type == "content_block_start":
 					block = event.get("content_block", {})
 					current_block_type = block.get("type")
 					if current_block_type == "tool_use":
@@ -430,8 +449,17 @@ class ClaudeProvider(AIProvider):
 					tool_input_json = ""
 
 				elif event_type == "message_delta":
+					# message_delta contains output token count
+					delta_usage = event.get("usage", {})
+					usage_completion = delta_usage.get("output_tokens", 0)
+
 					stop_reason = event.get("delta", {}).get("stop_reason")
 					if stop_reason:
+						yield {
+							"type": "usage",
+							"prompt_tokens": usage_prompt,
+							"completion_tokens": usage_completion,
+						}
 						yield {"type": "finish", "finish_reason": stop_reason}
 
 				elif event_type == "message_stop":

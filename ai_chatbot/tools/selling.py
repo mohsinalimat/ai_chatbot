@@ -12,7 +12,7 @@ from frappe.utils import flt
 from ai_chatbot.core.config import get_fiscal_year_dates, get_top_n_limit
 from ai_chatbot.core.session_context import get_company_filter
 from ai_chatbot.data.analytics import get_grouped_sum, get_time_series
-from ai_chatbot.data.charts import build_bar_chart, build_line_chart, build_pie_chart
+from ai_chatbot.data.charts import build_bar_chart, build_horizontal_bar, build_line_chart, build_pie_chart
 from ai_chatbot.data.currency import build_currency_response
 from ai_chatbot.tools.registry import register_tool
 
@@ -22,10 +22,19 @@ from ai_chatbot.tools.registry import register_tool
 	category="selling",
 	description="Get sales analytics including revenue, orders, and growth trends",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
+		},
 		"customer": {"type": "string", "description": "Filter by customer name"},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Sales Invoice"],
 )
@@ -37,10 +46,6 @@ def get_sales_analytics(from_date=None, to_date=None, customer=None, company=Non
 		fy_from, fy_to = get_fiscal_year_dates(company[0] if isinstance(company, list) else company)
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
-
-	filters = {"docstatus": 1}
-	if customer:
-		filters["customer"] = customer
 
 	# Build list filters for date range to support both from_date and to_date
 	if isinstance(company, list):
@@ -54,8 +59,6 @@ def get_sales_analytics(from_date=None, to_date=None, customer=None, company=Non
 	if customer:
 		list_filters.append(["customer", "=", customer])
 
-	import frappe
-
 	invoices = frappe.get_all(
 		"Sales Invoice",
 		filters=list_filters,
@@ -65,12 +68,47 @@ def get_sales_analytics(from_date=None, to_date=None, customer=None, company=Non
 	total_revenue = sum(flt(inv.base_grand_total) for inv in invoices)
 	invoice_count = len(invoices)
 
+	# Monthly revenue breakdown for the queried period (time-series bucketed by month)
+	from frappe.utils import getdate, month_diff
+
+	months_in_range = max(1, month_diff(to_date, from_date) + 1)
+	monthly_series = get_time_series(
+		doctype="Sales Invoice",
+		value_field="base_grand_total",
+		date_field="posting_date",
+		filters={"docstatus": 1, **({"customer": customer} if customer else {})},
+		company=company,
+		months=months_in_range,
+	)
+
+	# Filter to only months within the requested date range
+	from_month = str(getdate(from_date))[:7]
+	to_month = str(getdate(to_date))[:7]
+	monthly_series = [d for d in monthly_series if from_month <= d["month"] <= to_month]
+
+	categories = [d["month"] for d in monthly_series]
+	values = [flt(d["total"], 2) for d in monthly_series]
+
 	result = {
 		"total_revenue": total_revenue,
 		"invoice_count": invoice_count,
 		"average_order_value": total_revenue / invoice_count if invoice_count else 0,
 		"period": {"from": from_date, "to": to_date},
+		"monthly_revenue": [{"month": d["month"], "revenue": flt(d["total"], 2)} for d in monthly_series],
+		"echart_option": build_bar_chart(
+			title="Monthly Sales Revenue",
+			categories=categories,
+			series_data=values,
+			y_axis_name="Revenue",
+			series_name="Revenue",
+		)
+		if categories
+		else None,
 	}
+	# Strip None echart_option to keep response clean
+	if result["echart_option"] is None:
+		del result["echart_option"]
+
 	return build_currency_response(result, company[0] if isinstance(company, list) else company)
 
 
@@ -80,9 +118,18 @@ def get_sales_analytics(from_date=None, to_date=None, customer=None, company=Non
 	description="Get top customers by revenue",
 	parameters={
 		"limit": {"type": "integer", "description": "Number of customers to return (default 10)"},
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
+		},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Sales Invoice"],
 )
@@ -108,16 +155,35 @@ def get_top_customers(limit=10, from_date=None, to_date=None, company=None):
 		limit=limit,
 	)
 
+	customer_list = [
+		{
+			"customer": c.customer,
+			"total_revenue": flt(c.total),
+			"order_count": c.count,
+		}
+		for c in customers
+	]
+
+	# Horizontal bar chart — reversed so highest revenue is at the top
+	chart_customers = list(reversed(customer_list))
+	categories = [c["customer"] for c in chart_customers]
+	values = [flt(c["total_revenue"], 2) for c in chart_customers]
+
 	result = {
-		"top_customers": [
-			{
-				"customer": c.customer,
-				"total_revenue": flt(c.total),
-				"order_count": c.count,
-			}
-			for c in customers
-		],
+		"top_customers": customer_list,
+		"echart_option": build_horizontal_bar(
+			title="Top Customers by Revenue",
+			categories=categories,
+			series_data=values,
+			x_axis_name="Revenue",
+			series_name="Revenue",
+		)
+		if customer_list
+		else None,
 	}
+	if result["echart_option"] is None:
+		del result["echart_option"]
+
 	return build_currency_response(result, company[0] if isinstance(company, list) else company)
 
 
@@ -127,7 +193,10 @@ def get_top_customers(limit=10, from_date=None, to_date=None, company=None):
 	description="Get monthly sales revenue trend over time",
 	parameters={
 		"months": {"type": "integer", "description": "Number of months to show (default 12)"},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Sales Invoice"],
 )
@@ -171,9 +240,18 @@ def get_sales_trend(months=12, company=None):
 	category="selling",
 	description="Get sales breakdown by territory/region",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
+		},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Sales Invoice"],
 )
@@ -224,10 +302,19 @@ def get_sales_by_territory(from_date=None, to_date=None, company=None):
 	category="selling",
 	description="Get sales breakdown by item group/product category",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
+		},
 		"limit": {"type": "integer", "description": "Number of item groups to return (default 10)"},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Sales Invoice"],
 )
@@ -263,8 +350,7 @@ def get_sales_by_item_group(from_date=None, to_date=None, limit=10, company=None
 		query = query.where(si.company == company)
 
 	rows = (
-		query
-		.where(si.posting_date >= from_date)
+		query.where(si.posting_date >= from_date)
 		.where(si.posting_date <= to_date)
 		.groupby(sii.item_group)
 		.orderby(fn.Sum(sii.base_amount), order=frappe.qb.desc)

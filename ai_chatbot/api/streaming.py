@@ -122,14 +122,16 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 		tools = get_all_tools_schema()
 
 		# Run the streaming loop
-		full_content, tool_calls_data, tool_results_data, tokens_used = _stream_with_tools(
-			ai_provider=ai_provider,
-			provider=provider,
-			history=history,
-			tools=tools,
-			conversation_id=conversation_id,
-			stream_id=stream_id,
-			user=user,
+		full_content, tool_calls_data, tool_results_data, tokens_used, prompt_tokens, completion_tokens = (
+			_stream_with_tools(
+				ai_provider=ai_provider,
+				provider=provider,
+				history=history,
+				tools=tools,
+				conversation_id=conversation_id,
+				stream_id=stream_id,
+				user=user,
+			)
 		)
 
 		_publish_process_step(conversation_id, stream_id, "Saving response...", user)
@@ -148,12 +150,12 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 			}
 		).insert()
 
-		# Track token usage (streaming uses estimated tokens)
+		# Track token usage with real prompt/completion split from the provider
 		track_token_usage(
 			provider=ai_provider,
 			model=provider.model,
-			prompt_tokens=0,
-			completion_tokens=tokens_used,
+			prompt_tokens=prompt_tokens,
+			completion_tokens=completion_tokens,
 			user=user,
 			conversation_id=conversation_id,
 		)
@@ -217,7 +219,8 @@ def _stream_with_tools(
 	add results to history → stream again with tool results.
 
 	Returns:
-		tuple of (full_content, tool_calls_data, tool_results_data, tokens_used)
+		tuple of (full_content, tool_calls_data, tool_results_data,
+		          tokens_used, prompt_tokens, completion_tokens)
 	"""
 	# Check if agent orchestration should handle this query
 	from ai_chatbot.ai.agents.orchestrator import run_orchestrated_streaming, should_orchestrate
@@ -243,9 +246,11 @@ def _stream_with_tools(
 	full_content = ""
 	all_tool_calls = []
 	all_tool_results = []
+	total_prompt_tokens = 0
+	total_completion_tokens = 0
 
 	for _round in range(max_tool_rounds):
-		round_content, round_tool_calls, _needs_followup = _stream_single_round(
+		round_content, round_tool_calls, _needs_followup, round_usage = _stream_single_round(
 			provider=provider,
 			history=history,
 			tools=tools,
@@ -253,6 +258,11 @@ def _stream_with_tools(
 			stream_id=stream_id,
 			user=user,
 		)
+
+		# Accumulate real usage data from the provider
+		if round_usage:
+			total_prompt_tokens += round_usage.get("prompt_tokens", 0)
+			total_completion_tokens += round_usage.get("completion_tokens", 0)
 
 		full_content += round_content
 
@@ -342,22 +352,35 @@ def _stream_with_tools(
 		# Max rounds reached
 		pass
 
-	# Estimate tokens (rough — we don't get exact counts from streaming)
-	tokens_used = _estimate_tokens(full_content, history)
+	# Use real usage data from the provider when available; fall back to estimate
+	if total_prompt_tokens or total_completion_tokens:
+		tokens_used = total_prompt_tokens + total_completion_tokens
+	else:
+		tokens_used = _estimate_tokens(full_content, history)
+		total_completion_tokens = tokens_used
 
-	return full_content, all_tool_calls, all_tool_results, tokens_used
+	return (
+		full_content,
+		all_tool_calls,
+		all_tool_results,
+		tokens_used,
+		total_prompt_tokens,
+		total_completion_tokens,
+	)
 
 
 def _stream_single_round(provider, history, tools, conversation_id, stream_id, user):
 	"""Stream a single round of AI response.
 
 	Returns:
-		tuple of (content, tool_calls, needs_followup)
+		tuple of (content, tool_calls, needs_followup, usage)
 		where tool_calls is a list of dicts with id, name, arguments
+		and usage is a dict with prompt_tokens and completion_tokens (or None)
 	"""
 	content = ""
 	tool_calls = []
 	buffer = ""
+	usage = None
 
 	for event in provider.chat_completion_stream(history, tools=tools):
 		event_type = event.get("type")
@@ -379,6 +402,12 @@ def _stream_single_round(provider, history, tools, conversation_id, stream_id, u
 					user=user,
 				)
 				buffer = ""
+
+		elif event_type == "usage":
+			usage = {
+				"prompt_tokens": event.get("prompt_tokens", 0),
+				"completion_tokens": event.get("completion_tokens", 0),
+			}
 
 		elif event_type == "tool_call":
 			tc = event.get("tool_call", {})
@@ -428,7 +457,7 @@ def _stream_single_round(provider, history, tools, conversation_id, stream_id, u
 			user=user,
 		)
 
-	return content, tool_calls, bool(tool_calls)
+	return content, tool_calls, bool(tool_calls), usage
 
 
 def _publish(event, message, user=None):

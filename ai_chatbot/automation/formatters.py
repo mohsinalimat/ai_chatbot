@@ -9,12 +9,12 @@ complete data, so email/PDF output uses the same content — just
 converted to HTML with inline styles for compatibility.
 
 Charts are rendered server-side via ECharts SSR (Node.js). For PDF,
-inline SVG is used (works in wkhtmltopdf/Chrome). For email, charts
-are rendered as styled HTML tables since Gmail strips SVG and corrupts
-large base64 data URIs.
+inline SVG is used (works in WeasyPrint/wkhtmltopdf/Chrome). For
+email, charts are rendered as styled HTML tables since Gmail strips
+SVG and corrupts large base64 data URIs.
 
-Email clients and PDF renderers ignore <style> blocks, so every HTML
-element needs inline CSS.
+Email clients and some PDF renderers ignore <style> blocks, so every
+HTML element needs inline CSS.
 """
 
 from __future__ import annotations
@@ -349,10 +349,10 @@ def _replace_hr_tags(html: str) -> str:
 	(but may not fully eliminate) the issue.
 
 	.. note::
-		A few headings may still appear centered when they land exactly
-		at a wkhtmltopdf page break boundary. This is a known limitation
-		of wkhtmltopdf and is tracked for a future fix (e.g. switching
-		to weasyprint).
+		WeasyPrint (now the primary PDF engine) does not have the
+		centering bug. This workaround remains for the wkhtmltopdf
+		fallback path and can be removed once wkhtmltopdf is fully
+		dropped.
 	"""
 	hr_replacement = (
 		'<p style="margin: 10px 0; padding: 0; line-height: 0; '

@@ -282,9 +282,9 @@ def _generate_pdf(html_content: str, report_name: str) -> dict | None:
 		or None if PDF generation fails.
 	"""
 	try:
-		from frappe.utils.pdf import get_pdf
+		from ai_chatbot.utils.pdf import html_to_pdf
 
-		pdf_content = get_pdf(html_content)
+		pdf_content = html_to_pdf(html_content)
 		safe_name = report_name.replace(" ", "_").replace("/", "_")
 		today = frappe.utils.nowdate()
 

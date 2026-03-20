@@ -27,12 +27,39 @@ MODEL_PRICING = {
 }
 
 
+def _resolve_model_pricing(model: str) -> tuple[float, float] | None:
+	"""Resolve pricing for a model, using prefix-match fallback.
+
+	Exact match is tried first. If it fails, the longest MODEL_PRICING
+	key that is a prefix of the model string is used. This handles
+	versioned model names like ``gemini-2.5-flash-preview-04-17``
+	matching the ``gemini-2.5-flash`` pricing entry.
+
+	Returns:
+		(input_rate, output_rate) per 1M tokens, or None.
+	"""
+	pricing = MODEL_PRICING.get(model)
+	if pricing:
+		return pricing
+
+	# Prefix-match fallback — pick the longest matching key
+	best_key = ""
+	for key in MODEL_PRICING:
+		if model.startswith(key) and len(key) > len(best_key):
+			best_key = key
+	if best_key:
+		return MODEL_PRICING[best_key]
+
+	return None
+
+
 def estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
 	"""Estimate cost in USD for the given token counts.
 
-	Uses MODEL_PRICING lookup. Returns 0.0 for unknown models.
+	Uses MODEL_PRICING lookup with prefix-match fallback.
+	Returns 0.0 for unknown models.
 	"""
-	pricing = MODEL_PRICING.get(model)
+	pricing = _resolve_model_pricing(model)
 	if not pricing:
 		return 0.0
 

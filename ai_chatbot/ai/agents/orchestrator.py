@@ -206,7 +206,8 @@ def run_orchestrated_streaming(
 	"""Run the multi-agent orchestration pipeline with streaming.
 
 	Returns the same tuple format as _stream_with_tools() in streaming.py:
-	(full_content, all_tool_calls, all_tool_results, tokens_used)
+	(full_content, all_tool_calls, all_tool_results, tokens_used,
+	 prompt_tokens, completion_tokens)
 
 	Returns None on failure (caller should proceed with simple path).
 	"""
@@ -393,7 +394,17 @@ def run_orchestrated_streaming(
 		frappe.log_error(f"Agent streaming synthesis error: {e!s}", "AI Chatbot Agent")
 		return None
 
-	return (full_content, context.all_tool_calls, context.all_tool_results, context.total_tokens)
+	# Return the same 6-tuple as _stream_with_tools in streaming.py.
+	# The orchestrator doesn't have real per-round usage from the provider,
+	# so prompt_tokens=0 and completion_tokens=total_tokens (estimated).
+	return (
+		full_content,
+		context.all_tool_calls,
+		context.all_tool_results,
+		context.total_tokens,
+		0,
+		context.total_tokens,
+	)
 
 
 # ---------------------------------------------------------------------------

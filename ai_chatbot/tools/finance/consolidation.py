@@ -35,23 +35,20 @@ from ai_chatbot.tools.registry import register_tool
 		"tool_params": {
 			"type": "object",
 			"description": (
-				"Parameters to pass to the tool (e.g. {\"from_date\": \"2025-04-01\", "
-				"\"to_date\": \"2026-03-31\"}). Do NOT include 'company' — it is set "
+				'Parameters to pass to the tool (e.g. {"from_date": "2025-04-01", '
+				'"to_date": "2026-03-31"}). Do NOT include \'company\' — it is set '
 				"automatically for each subsidiary."
 			),
 		},
 		"target_currency": {
 			"type": "string",
 			"description": (
-				"Currency to display results in. Optional — defaults to the parent "
-				"company's currency."
+				"Currency to display results in. Optional — defaults to the parent company's currency."
 			),
 		},
 		"company": {
 			"type": "string",
-			"description": (
-				"Parent company name. Optional — defaults to user's default company."
-			),
+			"description": ("Parent company name. Optional — defaults to user's default company."),
 		},
 	},
 	doctypes=["Company"],

@@ -91,7 +91,9 @@ def get_budget_vs_actual(fiscal_year=None, cost_center=None, department=None, pr
 	else:
 		budget_query = budget_query.where(budget.company == company)
 
-	budget_query = apply_dimension_filters(budget_query, budget, cost_center=cost_center, department=department, project=project)
+	budget_query = apply_dimension_filters(
+		budget_query, budget, cost_center=cost_center, department=department, project=project
+	)
 
 	budget_data = budget_query.run(as_dict=True)
 
@@ -128,7 +130,9 @@ def get_budget_vs_actual(fiscal_year=None, cost_center=None, department=None, pr
 	else:
 		actual_query = actual_query.where(gle.company == company)
 
-	actual_query = apply_dimension_filters(actual_query, gle, cost_center=cost_center, department=department, project=project)
+	actual_query = apply_dimension_filters(
+		actual_query, gle, cost_center=cost_center, department=department, project=project
+	)
 
 	actual_data = actual_query.run(as_dict=True)
 
@@ -146,13 +150,15 @@ def get_budget_vs_actual(fiscal_year=None, cost_center=None, department=None, pr
 		variance = flt(b - a, 2)
 		variance_pct = flt((variance / b) * 100, 1) if b else 0
 
-		items.append({
-			"account": account,
-			"budget": b,
-			"actual": a,
-			"variance": variance,
-			"variance_pct": variance_pct,
-		})
+		items.append(
+			{
+				"account": account,
+				"budget": b,
+				"actual": a,
+				"variance": variance,
+				"variance_pct": variance_pct,
+			}
+		)
 		total_budget += b
 		total_actual += a
 
@@ -208,7 +214,9 @@ def get_budget_vs_actual(fiscal_year=None, cost_center=None, department=None, pr
 	},
 	doctypes=["Budget", "GL Entry"],
 )
-def get_budget_variance(fiscal_year=None, account=None, cost_center=None, department=None, project=None, company=None):
+def get_budget_variance(
+	fiscal_year=None, account=None, cost_center=None, department=None, project=None, company=None
+):
 	"""Get monthly budget vs actual variance for specific accounts."""
 	company = get_company_filter(company)
 
@@ -247,7 +255,9 @@ def get_budget_variance(fiscal_year=None, account=None, cost_center=None, depart
 	if account:
 		budget_query = budget_query.where(budget_acct.account == account)
 
-	budget_query = apply_dimension_filters(budget_query, budget, cost_center=cost_center, department=department, project=project)
+	budget_query = apply_dimension_filters(
+		budget_query, budget, cost_center=cost_center, department=department, project=project
+	)
 
 	budget_data = budget_query.run(as_dict=True)
 
@@ -284,13 +294,10 @@ def get_budget_variance(fiscal_year=None, account=None, cost_center=None, depart
 		actual_q = actual_q.where(gle.company.isin(company))
 	else:
 		actual_q = actual_q.where(gle.company == company)
-	actual_q = apply_dimension_filters(actual_q, gle, cost_center=cost_center, department=department, project=project)
-	actual_query = (
-		actual_q
-		.groupby(month_expr)
-		.orderby(month_expr)
-		.run(as_dict=True)
+	actual_q = apply_dimension_filters(
+		actual_q, gle, cost_center=cost_center, department=department, project=project
 	)
+	actual_query = actual_q.groupby(month_expr).orderby(month_expr).run(as_dict=True)
 
 	actual_map = {a.month: flt(a.actual, 2) for a in actual_query}
 
@@ -301,12 +308,14 @@ def get_budget_variance(fiscal_year=None, account=None, cost_center=None, depart
 	for m in all_months:
 		actual = actual_map.get(m, 0)
 		variance = flt(monthly_budget - actual, 2)
-		monthly.append({
-			"month": m,
-			"budget": monthly_budget,
-			"actual": flt(actual, 2),
-			"variance": variance,
-		})
+		monthly.append(
+			{
+				"month": m,
+				"budget": monthly_budget,
+				"actual": flt(actual, 2),
+				"variance": variance,
+			}
+		)
 
 	# Build chart
 	categories = [m["month"] for m in monthly]

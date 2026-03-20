@@ -133,16 +133,12 @@ def get_liquidity_ratios(company=None):
 	company = get_company_filter(company)
 	components = _get_current_assets_liabilities(company)
 
-	current_assets = (
-		components["receivables"] + components["inventory"] + components["cash_balance"]
-	)
+	current_assets = components["receivables"] + components["inventory"] + components["cash_balance"]
 	current_liabilities = components["payables"]
 
 	current_ratio = flt(current_assets / current_liabilities, 2) if current_liabilities else 0
 	quick_ratio = (
-		flt((current_assets - components["inventory"]) / current_liabilities, 2)
-		if current_liabilities
-		else 0
+		flt((current_assets - components["inventory"]) / current_liabilities, 2) if current_liabilities else 0
 	)
 
 	result = {
@@ -183,7 +179,9 @@ def get_liquidity_ratios(company=None):
 	},
 	doctypes=["Sales Invoice", "Purchase Invoice", "GL Entry"],
 )
-def get_profitability_ratios(from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None):
+def get_profitability_ratios(
+	from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None
+):
 	"""Gross Margin, Net Margin, ROA."""
 	company = get_company_filter(company)
 
@@ -202,7 +200,9 @@ def get_profitability_ratios(from_date=None, to_date=None, company=None, cost_ce
 		.where(si.posting_date <= to_date)
 	)
 	rev_q = _apply_company_filter(rev_q, si, company)
-	rev_q = apply_dimension_filters(rev_q, si, cost_center=cost_center, department=department, project=project)
+	rev_q = apply_dimension_filters(
+		rev_q, si, cost_center=cost_center, department=department, project=project
+	)
 	rev_result = rev_q.run(as_dict=True)
 	revenue = flt(rev_result[0].total) if rev_result else 0
 
@@ -216,7 +216,9 @@ def get_profitability_ratios(from_date=None, to_date=None, company=None, cost_ce
 		.where(pi.posting_date <= to_date)
 	)
 	cogs_q = _apply_company_filter(cogs_q, pi, company)
-	cogs_q = apply_dimension_filters(cogs_q, pi, cost_center=cost_center, department=department, project=project)
+	cogs_q = apply_dimension_filters(
+		cogs_q, pi, cost_center=cost_center, department=department, project=project
+	)
 	cogs_result = cogs_q.run(as_dict=True)
 	cogs = flt(cogs_result[0].total) if cogs_result else 0
 
@@ -281,7 +283,9 @@ def get_profitability_ratios(from_date=None, to_date=None, company=None, cost_ce
 	},
 	doctypes=["Sales Invoice", "Purchase Invoice"],
 )
-def get_efficiency_ratios(from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None):
+def get_efficiency_ratios(
+	from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None
+):
 	"""Inventory Turnover, Receivable Days (DSO), Payable Days (DPO)."""
 	company = get_company_filter(company)
 
@@ -302,7 +306,9 @@ def get_efficiency_ratios(from_date=None, to_date=None, company=None, cost_cente
 		.where(si.posting_date <= to_date)
 	)
 	rev_q = _apply_company_filter(rev_q, si, company)
-	rev_q = apply_dimension_filters(rev_q, si, cost_center=cost_center, department=department, project=project)
+	rev_q = apply_dimension_filters(
+		rev_q, si, cost_center=cost_center, department=department, project=project
+	)
 	rev_result = rev_q.run(as_dict=True)
 	revenue = flt(rev_result[0].total) if rev_result else 0
 
@@ -316,7 +322,9 @@ def get_efficiency_ratios(from_date=None, to_date=None, company=None, cost_cente
 		.where(pi.posting_date <= to_date)
 	)
 	cogs_q = _apply_company_filter(cogs_q, pi, company)
-	cogs_q = apply_dimension_filters(cogs_q, pi, cost_center=cost_center, department=department, project=project)
+	cogs_q = apply_dimension_filters(
+		cogs_q, pi, cost_center=cost_center, department=department, project=project
+	)
 	cogs_result = cogs_q.run(as_dict=True)
 	cogs = flt(cogs_result[0].total) if cogs_result else 0
 
@@ -328,7 +336,9 @@ def get_efficiency_ratios(from_date=None, to_date=None, company=None, cost_cente
 		.where(si.outstanding_amount > 0)
 	)
 	recv_q = _apply_company_filter(recv_q, si, company)
-	recv_q = apply_dimension_filters(recv_q, si, cost_center=cost_center, department=department, project=project)
+	recv_q = apply_dimension_filters(
+		recv_q, si, cost_center=cost_center, department=department, project=project
+	)
 	recv_result = recv_q.run(as_dict=True)
 	avg_receivables = flt(recv_result[0].total) if recv_result else 0
 
@@ -356,7 +366,9 @@ def get_efficiency_ratios(from_date=None, to_date=None, company=None, cost_cente
 		.where(pi.outstanding_amount > 0)
 	)
 	pay_q = _apply_company_filter(pay_q, pi, company)
-	pay_q = apply_dimension_filters(pay_q, pi, cost_center=cost_center, department=department, project=project)
+	pay_q = apply_dimension_filters(
+		pay_q, pi, cost_center=cost_center, department=department, project=project
+	)
 	pay_result = pay_q.run(as_dict=True)
 	avg_payables = flt(pay_result[0].total) if pay_result else 0
 

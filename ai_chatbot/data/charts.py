@@ -23,7 +23,6 @@ CHART_COLORS = [
 ]
 
 
-
 def _colorize_data(series_data):
 	"""Assign individual colors to each data point for single-series charts."""
 	return [
@@ -214,14 +213,16 @@ def build_stacked_bar_chart(
 	"""
 	series = []
 	for i, s in enumerate(series_list):
-		series.append({
-			"name": s["name"],
-			"type": "bar",
-			"stack": "total",
-			"data": s["data"],
-			"itemStyle": {"color": CHART_COLORS[i % len(CHART_COLORS)]},
-			"emphasis": {"focus": "series"},
-		})
+		series.append(
+			{
+				"name": s["name"],
+				"type": "bar",
+				"stack": "total",
+				"data": s["data"],
+				"itemStyle": {"color": CHART_COLORS[i % len(CHART_COLORS)]},
+				"emphasis": {"focus": "series"},
+			}
+		)
 
 	return {
 		"color": CHART_COLORS,

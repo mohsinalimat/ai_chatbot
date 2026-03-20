@@ -116,7 +116,9 @@ def set_target_currency(currency=None):
 	ctx = set_session_context(conversation_id, "target_currency", currency)
 
 	if currency:
-		message = f"Display currency set to {currency} for this session. All monetary values will be converted."
+		message = (
+			f"Display currency set to {currency} for this session. All monetary values will be converted."
+		)
 	else:
 		message = f"Display currency reset to company default ({company_currency})."
 

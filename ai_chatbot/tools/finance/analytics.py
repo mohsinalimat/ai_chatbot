@@ -169,10 +169,12 @@ def _build_chart(table_data, metric, group_by, period):
 		while len(period_values) < len(period_columns):
 			period_values.append(0)
 
-		series_list.append({
-			"name": row.get("description", "Unknown"),
-			"data": [flt(v, 2) for v in period_values[:len(period_columns)]],
-		})
+		series_list.append(
+			{
+				"name": row.get("description", "Unknown"),
+				"data": [flt(v, 2) for v in period_values[: len(period_columns)]],
+			}
+		)
 
 	all_dims = get_all_dimensions()
 	dim_label = all_dims.get(group_by[0], {}).get("label", group_by[0])

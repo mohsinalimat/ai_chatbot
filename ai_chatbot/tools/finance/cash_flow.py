@@ -52,7 +52,9 @@ def _apply_company_filter(query, doctype_ref, company):
 	},
 	doctypes=["Payment Entry"],
 )
-def get_cash_flow_statement(from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None):
+def get_cash_flow_statement(
+	from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None
+):
 	"""Get structured cash flow statement from Payment Entries."""
 	company = get_company_filter(company)
 
@@ -74,7 +76,9 @@ def get_cash_flow_statement(from_date=None, to_date=None, company=None, cost_cen
 		.where(pe.posting_date <= to_date)
 	)
 	op_inflow_q = _apply_company_filter(op_inflow_q, pe, company)
-	op_inflow_q = apply_dimension_filters(op_inflow_q, pe, cost_center=cost_center, department=department, project=project)
+	op_inflow_q = apply_dimension_filters(
+		op_inflow_q, pe, cost_center=cost_center, department=department, project=project
+	)
 	op_inflow = op_inflow_q.run(as_dict=True)
 	operating_inflow = flt(op_inflow[0].total) if op_inflow else 0
 
@@ -89,7 +93,9 @@ def get_cash_flow_statement(from_date=None, to_date=None, company=None, cost_cen
 		.where(pe.posting_date <= to_date)
 	)
 	op_outflow_q = _apply_company_filter(op_outflow_q, pe, company)
-	op_outflow_q = apply_dimension_filters(op_outflow_q, pe, cost_center=cost_center, department=department, project=project)
+	op_outflow_q = apply_dimension_filters(
+		op_outflow_q, pe, cost_center=cost_center, department=department, project=project
+	)
 	op_outflow = op_outflow_q.run(as_dict=True)
 	operating_outflow = flt(op_outflow[0].total) if op_outflow else 0
 
@@ -104,7 +110,9 @@ def get_cash_flow_statement(from_date=None, to_date=None, company=None, cost_cen
 		.where(pe.posting_date <= to_date)
 	)
 	other_inflow_q = _apply_company_filter(other_inflow_q, pe, company)
-	other_inflow_q = apply_dimension_filters(other_inflow_q, pe, cost_center=cost_center, department=department, project=project)
+	other_inflow_q = apply_dimension_filters(
+		other_inflow_q, pe, cost_center=cost_center, department=department, project=project
+	)
 	other_inflow = other_inflow_q.run(as_dict=True)
 	financing_inflow = flt(other_inflow[0].total) if other_inflow else 0
 
@@ -119,7 +127,9 @@ def get_cash_flow_statement(from_date=None, to_date=None, company=None, cost_cen
 		.where(pe.posting_date <= to_date)
 	)
 	other_outflow_q = _apply_company_filter(other_outflow_q, pe, company)
-	other_outflow_q = apply_dimension_filters(other_outflow_q, pe, cost_center=cost_center, department=department, project=project)
+	other_outflow_q = apply_dimension_filters(
+		other_outflow_q, pe, cost_center=cost_center, department=department, project=project
+	)
 	other_outflow = other_outflow_q.run(as_dict=True)
 	financing_outflow = flt(other_outflow[0].total) if other_outflow else 0
 
@@ -182,13 +192,10 @@ def get_cash_flow_trend(months=12, company=None, cost_center=None, department=No
 		.where(pe.posting_date <= end_date)
 	)
 	inflow_q = _apply_company_filter(inflow_q, pe, company)
-	inflow_q = apply_dimension_filters(inflow_q, pe, cost_center=cost_center, department=department, project=project)
-	inflow_data = (
-		inflow_q
-		.groupby(month_expr)
-		.orderby(month_expr)
-		.run(as_dict=True)
+	inflow_q = apply_dimension_filters(
+		inflow_q, pe, cost_center=cost_center, department=department, project=project
 	)
+	inflow_data = inflow_q.groupby(month_expr).orderby(month_expr).run(as_dict=True)
 
 	# Outflow by month
 	outflow_q = (
@@ -203,13 +210,10 @@ def get_cash_flow_trend(months=12, company=None, cost_center=None, department=No
 		.where(pe.posting_date <= end_date)
 	)
 	outflow_q = _apply_company_filter(outflow_q, pe, company)
-	outflow_q = apply_dimension_filters(outflow_q, pe, cost_center=cost_center, department=department, project=project)
-	outflow_data = (
-		outflow_q
-		.groupby(month_expr)
-		.orderby(month_expr)
-		.run(as_dict=True)
+	outflow_q = apply_dimension_filters(
+		outflow_q, pe, cost_center=cost_center, department=department, project=project
 	)
+	outflow_data = outflow_q.groupby(month_expr).orderby(month_expr).run(as_dict=True)
 
 	# Build lookup dicts
 	inflow_map = {r.month: flt(r.total) for r in inflow_data}
@@ -222,12 +226,14 @@ def get_cash_flow_trend(months=12, company=None, cost_center=None, department=No
 	for m in all_months:
 		inflow = flt(inflow_map.get(m, 0), 2)
 		outflow = flt(outflow_map.get(m, 0), 2)
-		monthly.append({
-			"month": m,
-			"inflow": inflow,
-			"outflow": outflow,
-			"net": flt(inflow - outflow, 2),
-		})
+		monthly.append(
+			{
+				"month": m,
+				"inflow": inflow,
+				"outflow": outflow,
+				"net": flt(inflow - outflow, 2),
+			}
+		)
 
 	# Build chart
 	categories = [m["month"] for m in monthly]
@@ -322,11 +328,13 @@ def get_bank_balance(account=None, company=None):
 	total_balance = 0.0
 	for acc_name in account_names:
 		bal = balance_map.get(acc_name, 0)
-		account_list.append({
-			"account": acc_name,
-			"account_type": account_type_map.get(acc_name, ""),
-			"balance": flt(bal, 2),
-		})
+		account_list.append(
+			{
+				"account": acc_name,
+				"account_type": account_type_map.get(acc_name, ""),
+				"balance": flt(bal, 2),
+			}
+		)
 		total_balance += bal
 
 	result = {

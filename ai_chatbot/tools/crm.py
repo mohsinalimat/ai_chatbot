@@ -140,9 +140,11 @@ def get_opportunity_pipeline(status=None, company=None):
 
 	# Build stage summary instead of returning raw records
 	stage_summary = [
-		{"stage": stage, "value": flt(val, 2), "count": sum(
-			1 for o in opportunities if (o.get("sales_stage") or "Unassigned") == stage
-		)}
+		{
+			"stage": stage,
+			"value": flt(val, 2),
+			"count": sum(1 for o in opportunities if (o.get("sales_stage") or "Unassigned") == stage),
+		}
 		for stage, val in stage_data.items()
 	]
 	stage_summary.sort(key=lambda s: s["value"], reverse=True)
@@ -232,14 +234,17 @@ def get_lead_conversion_rate(from_date=None, to_date=None, company=None):
 
 	conversion_rate = round(converted / total * 100, 1) if total > 0 else 0
 
-	return build_company_context({
-		"total_leads": total,
-		"converted_leads": converted,
-		"conversion_rate": conversion_rate,
-		"replied": replied,
-		"lost": lost,
-		"period": {"from": from_date, "to": to_date},
-	}, _primary(company))
+	return build_company_context(
+		{
+			"total_leads": total,
+			"converted_leads": converted,
+			"conversion_rate": conversion_rate,
+			"replied": replied,
+			"lost": lost,
+			"period": {"from": from_date, "to": to_date},
+		},
+		_primary(company),
+	)
 
 
 # ---------------------------------------------------------------------------
@@ -296,10 +301,7 @@ def get_lead_source_analysis(from_date=None, to_date=None, company=None):
 		query = query.where(lead.company == company)
 	rows = query.run(as_dict=True)
 
-	sources = [
-		{"source": r.source or "Unknown", "total_leads": r.total}
-		for r in rows
-	]
+	sources = [{"source": r.source or "Unknown", "total_leads": r.total} for r in rows]
 
 	pie_data = [{"name": s["source"], "value": s["total_leads"]} for s in sources]
 
@@ -325,8 +327,7 @@ def get_lead_source_analysis(from_date=None, to_date=None, company=None):
 	name="get_sales_funnel",
 	category="crm",
 	description=(
-		"Get sales funnel showing conversion from leads to opportunities "
-		"to quotations to sales orders"
+		"Get sales funnel showing conversion from leads to opportunities to quotations to sales orders"
 	),
 	parameters={
 		"from_date": {

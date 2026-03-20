@@ -81,14 +81,16 @@ def _get_profitability_data(group_field, from_date, to_date, company, limit=None
 		margin = flt(revenue - cost, 2)
 		margin_pct = flt((margin / revenue) * 100, 1) if revenue else 0
 
-		results.append({
-			"name": r.group_value or "Unknown",
-			"revenue": revenue,
-			"cost": cost,
-			"margin": margin,
-			"margin_pct": margin_pct,
-			"invoice_count": r.invoice_count,
-		})
+		results.append(
+			{
+				"name": r.group_value or "Unknown",
+				"revenue": revenue,
+				"cost": cost,
+				"margin": margin,
+				"margin_pct": margin_pct,
+				"invoice_count": r.invoice_count,
+			}
+		)
 
 	return results
 
@@ -117,7 +119,9 @@ def _get_profitability_data(group_field, from_date, to_date, company, limit=None
 	},
 	doctypes=["Sales Invoice"],
 )
-def get_profitability_by_customer(from_date=None, to_date=None, limit=10, company=None, cost_center=None, department=None, project=None):
+def get_profitability_by_customer(
+	from_date=None, to_date=None, limit=10, company=None, cost_center=None, department=None, project=None
+):
 	"""Profitability analysis grouped by customer."""
 	limit = get_top_n_limit(limit)
 	company = get_company_filter(company)
@@ -127,7 +131,16 @@ def get_profitability_by_customer(from_date=None, to_date=None, limit=10, compan
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
-	data = _get_profitability_data("customer", from_date, to_date, company, limit, cost_center=cost_center, department=department, project=project)
+	data = _get_profitability_data(
+		"customer",
+		from_date,
+		to_date,
+		company,
+		limit,
+		cost_center=cost_center,
+		department=department,
+		project=project,
+	)
 
 	# Chart — horizontal bar of margin amounts (reversed for top-at-top)
 	customers = [d["name"] for d in reversed(data)]
@@ -171,7 +184,9 @@ def get_profitability_by_customer(from_date=None, to_date=None, limit=10, compan
 	},
 	doctypes=["Sales Invoice"],
 )
-def get_profitability_by_item(from_date=None, to_date=None, limit=10, company=None, cost_center=None, department=None, project=None):
+def get_profitability_by_item(
+	from_date=None, to_date=None, limit=10, company=None, cost_center=None, department=None, project=None
+):
 	"""Profitability analysis grouped by item_code."""
 	limit = get_top_n_limit(limit)
 	company = get_company_filter(company)
@@ -208,10 +223,11 @@ def get_profitability_by_item(from_date=None, to_date=None, limit=10, company=No
 		query = query.where(si.company.isin(company))
 	else:
 		query = query.where(si.company == company)
-	query = apply_dimension_filters(query, si, cost_center=cost_center, department=department, project=project)
+	query = apply_dimension_filters(
+		query, si, cost_center=cost_center, department=department, project=project
+	)
 	rows = (
-		query
-		.groupby(sii.item_code, sii.item_name)
+		query.groupby(sii.item_code, sii.item_name)
 		.orderby(revenue_expr, order=frappe.qb.desc)
 		.limit(limit)
 		.run(as_dict=True)
@@ -223,15 +239,17 @@ def get_profitability_by_item(from_date=None, to_date=None, limit=10, company=No
 		cost = flt(r.cost, 2)
 		margin = flt(revenue - cost, 2)
 		margin_pct = flt((margin / revenue) * 100, 1) if revenue else 0
-		items.append({
-			"item_code": r.item_code,
-			"item_name": r.item_name,
-			"revenue": revenue,
-			"cost": cost,
-			"margin": margin,
-			"margin_pct": margin_pct,
-			"total_qty": flt(r.total_qty),
-		})
+		items.append(
+			{
+				"item_code": r.item_code,
+				"item_name": r.item_name,
+				"revenue": revenue,
+				"cost": cost,
+				"margin": margin,
+				"margin_pct": margin_pct,
+				"total_qty": flt(r.total_qty),
+			}
+		)
 
 	# Chart
 	item_labels = [i["item_name"] or i["item_code"] for i in reversed(items)]
@@ -274,7 +292,9 @@ def get_profitability_by_item(from_date=None, to_date=None, limit=10, company=No
 	},
 	doctypes=["Sales Invoice"],
 )
-def get_profitability_by_territory(from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None):
+def get_profitability_by_territory(
+	from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None
+):
 	"""Profitability analysis grouped by territory."""
 	company = get_company_filter(company)
 
@@ -283,7 +303,16 @@ def get_profitability_by_territory(from_date=None, to_date=None, company=None, c
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
-	data = _get_profitability_data("territory", from_date, to_date, company, limit=None, cost_center=cost_center, department=department, project=project)
+	data = _get_profitability_data(
+		"territory",
+		from_date,
+		to_date,
+		company,
+		limit=None,
+		cost_center=cost_center,
+		department=department,
+		project=project,
+	)
 
 	# Pie chart of margin by territory
 	pie_data = [{"name": d["name"], "value": d["margin"]} for d in data if d["margin"] > 0]

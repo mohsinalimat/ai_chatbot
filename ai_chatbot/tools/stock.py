@@ -114,19 +114,17 @@ def get_low_stock_items(limit=50, company=None):
 	else:
 		query = query.where(wh_table.company == company)
 
-	query = (
-		query
-		.where(bin_table.actual_qty < reorder_level)
-		.orderby(bin_table.actual_qty)
-		.limit(limit)
-	)
+	query = query.where(bin_table.actual_qty < reorder_level).orderby(bin_table.actual_qty).limit(limit)
 
 	items = query.run(as_dict=True)
 
-	return build_company_context({
-		"low_stock_items": items,
-		"count": len(items),
-	}, _primary(company))
+	return build_company_context(
+		{
+			"low_stock_items": items,
+			"count": len(items),
+		},
+		_primary(company),
+	)
 
 
 @register_tool(
@@ -136,8 +134,14 @@ def get_low_stock_items(limit=50, company=None):
 	parameters={
 		"item_code": {"type": "string", "description": "Filter by specific item code"},
 		"warehouse": {"type": "string", "description": "Filter by specific warehouse"},
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
+		},
 		"company": {"type": "string", "description": "Company name. Defaults to user's default company."},
 	},
 	doctypes=["Stock Ledger Entry"],
@@ -170,12 +174,12 @@ def get_stock_movement(item_code=None, warehouse=None, from_date=None, to_date=N
 			.on(sle.warehouse == wh_table.name)
 			.select(
 				month_expr.as_("month"),
-				fn.Sum(
-					frappe.qb.terms.Case().when(sle.actual_qty > 0, sle.actual_qty).else_(0)
-				).as_("stock_in"),
-				fn.Sum(
-					frappe.qb.terms.Case().when(sle.actual_qty < 0, fn.Abs(sle.actual_qty)).else_(0)
-				).as_("stock_out"),
+				fn.Sum(frappe.qb.terms.Case().when(sle.actual_qty > 0, sle.actual_qty).else_(0)).as_(
+					"stock_in"
+				),
+				fn.Sum(frappe.qb.terms.Case().when(sle.actual_qty < 0, fn.Abs(sle.actual_qty)).else_(0)).as_(
+					"stock_out"
+				),
 			)
 			.where(sle.is_cancelled == 0)
 			.where(sle.item_code == item_code)
@@ -237,12 +241,12 @@ def get_stock_movement(item_code=None, warehouse=None, from_date=None, to_date=N
 			.on(sle.warehouse == wh_table.name)
 			.select(
 				sle.item_code,
-				fn.Sum(
-					frappe.qb.terms.Case().when(sle.actual_qty > 0, sle.actual_qty).else_(0)
-				).as_("stock_in"),
-				fn.Sum(
-					frappe.qb.terms.Case().when(sle.actual_qty < 0, fn.Abs(sle.actual_qty)).else_(0)
-				).as_("stock_out"),
+				fn.Sum(frappe.qb.terms.Case().when(sle.actual_qty > 0, sle.actual_qty).else_(0)).as_(
+					"stock_in"
+				),
+				fn.Sum(frappe.qb.terms.Case().when(sle.actual_qty < 0, fn.Abs(sle.actual_qty)).else_(0)).as_(
+					"stock_out"
+				),
 			)
 			.where(sle.is_cancelled == 0)
 			.where(sle.posting_date >= from_date)
@@ -255,8 +259,7 @@ def get_stock_movement(item_code=None, warehouse=None, from_date=None, to_date=N
 			query = query.where(wh_table.company == company)
 
 		query = (
-			query
-			.groupby(sle.item_code)
+			query.groupby(sle.item_code)
 			.orderby(fn.Sum(fn.Abs(sle.actual_qty)), order=frappe.qb.desc)
 			.limit(get_query_limit())
 		)
@@ -328,10 +331,13 @@ def get_stock_ageing(warehouse=None, company=None):
 	bins = bin_query.limit(100).run(as_dict=True)
 
 	if not bins:
-		return build_company_context({
-			"items": [],
-			"aging_summary": {b["label"]: {"count": 0, "total_qty": 0} for b in AGING_BUCKETS},
-		}, _primary(company))
+		return build_company_context(
+			{
+				"items": [],
+				"aging_summary": {b["label"]: {"count": 0, "total_qty": 0} for b in AGING_BUCKETS},
+			},
+			_primary(company),
+		)
 
 	# For each item+warehouse, find the oldest positive SLE (first receipt)
 	item_ages = []
@@ -359,13 +365,15 @@ def get_stock_ageing(warehouse=None, company=None):
 				bucket = ab["label"]
 				break
 
-		item_ages.append({
-			"item_code": b.item_code,
-			"warehouse": b.warehouse,
-			"qty": flt(b.actual_qty),
-			"age_days": age_days,
-			"bucket": bucket,
-		})
+		item_ages.append(
+			{
+				"item_code": b.item_code,
+				"warehouse": b.warehouse,
+				"qty": flt(b.actual_qty),
+				"age_days": age_days,
+				"bucket": bucket,
+			}
+		)
 
 	# Build aging summary
 	aging_summary = {b["label"]: {"count": 0, "total_qty": 0} for b in AGING_BUCKETS}

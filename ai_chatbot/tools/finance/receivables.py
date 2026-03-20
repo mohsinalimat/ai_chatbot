@@ -54,7 +54,9 @@ def _get_aging_bucket(days_overdue: int) -> str:
 	},
 	doctypes=["Sales Invoice"],
 )
-def get_receivable_aging(ageing_based_on="Due Date", customer=None, company=None, cost_center=None, department=None, project=None):
+def get_receivable_aging(
+	ageing_based_on="Due Date", customer=None, company=None, cost_center=None, department=None, project=None
+):
 	"""Get AR aging analysis from outstanding Sales Invoices."""
 	company = get_company_filter(company)
 	today = nowdate()
@@ -83,7 +85,9 @@ def get_receivable_aging(ageing_based_on="Due Date", customer=None, company=None
 	if customer:
 		query = query.where(si.customer == customer)
 
-	query = apply_dimension_filters(query, si, cost_center=cost_center, department=department, project=project)
+	query = apply_dimension_filters(
+		query, si, cost_center=cost_center, department=department, project=project
+	)
 
 	invoices = query.run(as_dict=True)
 
@@ -165,10 +169,11 @@ def get_top_debtors(limit=10, company=None, cost_center=None, department=None, p
 		query = query.where(si.company.isin(company))
 	else:
 		query = query.where(si.company == company)
-	query = apply_dimension_filters(query, si, cost_center=cost_center, department=department, project=project)
+	query = apply_dimension_filters(
+		query, si, cost_center=cost_center, department=department, project=project
+	)
 	debtors = (
-		query
-		.groupby(si.customer)
+		query.groupby(si.customer)
 		.orderby(fn.Sum(si.outstanding_amount), order=frappe.qb.desc)
 		.limit(limit)
 		.run(as_dict=True)

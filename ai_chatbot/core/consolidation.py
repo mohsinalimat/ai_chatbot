@@ -74,23 +74,27 @@ def get_consolidated_data(tool_func, parent_company, **kwargs):
 			rate = 1.0
 			if company_currency != target_currency:
 				rate = _get_exchange_rate(company_currency, target_currency)
-			results.append({
-				"company": company,
-				"data": result,
-				"currency": company_currency,
-				"exchange_rate": rate,
-			})
+			results.append(
+				{
+					"company": company,
+					"data": result,
+					"currency": company_currency,
+					"exchange_rate": rate,
+				}
+			)
 		except Exception as e:
 			frappe.log_error(
 				f"Consolidation error for {company}: {e}",
 				"AI Chatbot Consolidation",
 			)
-			results.append({
-				"company": company,
-				"data": {"error": str(e)},
-				"currency": get_company_currency(company),
-				"exchange_rate": 1.0,
-			})
+			results.append(
+				{
+					"company": company,
+					"data": {"error": str(e)},
+					"currency": get_company_currency(company),
+					"exchange_rate": 1.0,
+				}
+			)
 
 	return {
 		"companies": results,

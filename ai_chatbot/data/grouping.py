@@ -131,26 +131,21 @@ def resolve_dimension_name(name, all_dims):
 			return key
 
 	# Suffix match on fieldname: "vertical" matches "business_vertical"
-	suffix_matches = [
-		key for key in all_dims
-		if key.endswith(f"_{normalized}") or key == normalized
-	]
+	suffix_matches = [key for key in all_dims if key.endswith(f"_{normalized}") or key == normalized]
 	if len(suffix_matches) == 1:
 		return suffix_matches[0]
 
 	# Partial word match on label: "vertical" matches "Business Vertical"
 	label_matches = [
-		key for key, config in all_dims.items()
+		key
+		for key, config in all_dims.items()
 		if normalized.replace("_", " ") in config.get("label", "").lower().split()
 	]
 	if len(label_matches) == 1:
 		return label_matches[0]
 
 	# Contains match on fieldname: "vertical" is contained in "business_vertical"
-	contains_matches = [
-		key for key in all_dims
-		if normalized in key
-	]
+	contains_matches = [key for key in all_dims if normalized in key]
 	if len(contains_matches) == 1:
 		return contains_matches[0]
 
@@ -264,7 +259,9 @@ def get_grouped_metric(
 	period_columns = _build_period_columns(from_date, to_date, period)
 
 	if metric == "profit":
-		return _get_profit_grouped(group_by, period, from_date, to_date, query_companies, period_columns, all_dims)
+		return _get_profit_grouped(
+			group_by, period, from_date, to_date, query_companies, period_columns, all_dims
+		)
 
 	config = METRIC_CONFIG[metric]
 	flat_rows = _build_and_run_query(config, group_by, period, from_date, to_date, query_companies, all_dims)
@@ -513,12 +510,14 @@ def _pivot_single_dimension(flat_rows, period_columns):
 	for dim_val, period_totals in dim_data.items():
 		grand_total = flt(sum(period_totals.values()), 2)
 		values = [grand_total] + [flt(period_totals.get(p, 0), 2) for p in period_columns]
-		result.append({
-			"description": str(dim_val),
-			"level": 0,
-			"is_group": False,
-			"values": values,
-		})
+		result.append(
+			{
+				"description": str(dim_val),
+				"level": 0,
+				"is_group": False,
+				"values": values,
+			}
+		)
 
 	# Sort by grand total descending
 	result.sort(key=lambda r: r["values"][0], reverse=True)
@@ -564,7 +563,7 @@ def _flatten_tree(node, period_columns, result, level, num_dims):
 	At leaf level (level == num_dims - 1), node values are {period -> total} dicts.
 	At group levels, node values are OrderedDicts containing children.
 	"""
-	is_leaf_level = (level == num_dims - 2)  # children are leaves
+	is_leaf_level = level == num_dims - 2  # children are leaves
 
 	for key, children in node.items():
 		if is_leaf_level:
@@ -576,12 +575,14 @@ def _flatten_tree(node, period_columns, result, level, num_dims):
 			for child_key, period_totals in children.items():
 				grand_total = flt(sum(period_totals.values()), 2)
 				values = [grand_total] + [flt(period_totals.get(p, 0), 2) for p in period_columns]
-				child_rows.append({
-					"description": str(child_key),
-					"level": level + 1,
-					"is_group": False,
-					"values": values,
-				})
+				child_rows.append(
+					{
+						"description": str(child_key),
+						"level": level + 1,
+						"is_group": False,
+						"values": values,
+					}
+				)
 				# Accumulate into group subtotals
 				for p, v in period_totals.items():
 					group_period_totals[p] = group_period_totals.get(p, 0) + v
@@ -591,15 +592,15 @@ def _flatten_tree(node, period_columns, result, level, num_dims):
 
 			# Add group header row with subtotals
 			group_total = flt(sum(group_period_totals.values()), 2)
-			group_values = [group_total] + [
-				flt(group_period_totals.get(p, 0), 2) for p in period_columns
-			]
-			result.append({
-				"description": str(key),
-				"level": level,
-				"is_group": True,
-				"values": group_values,
-			})
+			group_values = [group_total] + [flt(group_period_totals.get(p, 0), 2) for p in period_columns]
+			result.append(
+				{
+					"description": str(key),
+					"level": level,
+					"is_group": True,
+					"values": group_values,
+				}
+			)
 
 			# Add children
 			result.extend(child_rows)
@@ -617,10 +618,12 @@ def _flatten_tree(node, period_columns, result, level, num_dims):
 
 			group_values = [flt(v, 2) for v in group_values]
 
-			result.append({
-				"description": str(key),
-				"level": level,
-				"is_group": True,
-				"values": group_values,
-			})
+			result.append(
+				{
+					"description": str(key),
+					"level": level,
+					"is_group": True,
+					"values": group_values,
+				}
+			)
 			result.extend(sub_result)

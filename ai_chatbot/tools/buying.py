@@ -22,9 +22,18 @@ from ai_chatbot.tools.registry import register_tool
 	category="buying",
 	description="Get purchase analytics including spending, orders, and supplier performance",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
+		},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Purchase Invoice"],
 )
@@ -71,7 +80,10 @@ def get_purchase_analytics(from_date=None, to_date=None, company=None):
 	description="Analyze supplier performance metrics",
 	parameters={
 		"supplier": {"type": "string", "description": "Supplier name"},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Purchase Order"],
 )
@@ -108,7 +120,10 @@ def get_supplier_performance(supplier=None, company=None):
 	description="Get monthly purchase spending trend over time",
 	parameters={
 		"months": {"type": "integer", "description": "Number of months to show (default 12)"},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Purchase Invoice"],
 )
@@ -152,10 +167,19 @@ def get_purchase_trend(months=12, company=None):
 	category="buying",
 	description="Get purchase breakdown by item group/product category",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
+		},
 		"limit": {"type": "integer", "description": "Number of item groups to return (default 10)"},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Purchase Invoice"],
 )
@@ -192,8 +216,7 @@ def get_purchase_by_item_group(from_date=None, to_date=None, limit=10, company=N
 		query = query.where(pi.company == company)
 
 	rows = (
-		query
-		.where(pi.posting_date >= from_date)
+		query.where(pi.posting_date >= from_date)
 		.where(pi.posting_date <= to_date)
 		.groupby(pii.item_group)
 		.orderby(fn.Sum(pii.base_amount), order=frappe.qb.desc)

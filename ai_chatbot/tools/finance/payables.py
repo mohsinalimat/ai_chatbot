@@ -54,7 +54,9 @@ def _get_aging_bucket(days_overdue: int) -> str:
 	},
 	doctypes=["Purchase Invoice"],
 )
-def get_payable_aging(ageing_based_on="Due Date", supplier=None, company=None, cost_center=None, department=None, project=None):
+def get_payable_aging(
+	ageing_based_on="Due Date", supplier=None, company=None, cost_center=None, department=None, project=None
+):
 	"""Get AP aging analysis from outstanding Purchase Invoices."""
 	company = get_company_filter(company)
 	today = nowdate()
@@ -83,7 +85,9 @@ def get_payable_aging(ageing_based_on="Due Date", supplier=None, company=None, c
 	if supplier:
 		query = query.where(pi.supplier == supplier)
 
-	query = apply_dimension_filters(query, pi, cost_center=cost_center, department=department, project=project)
+	query = apply_dimension_filters(
+		query, pi, cost_center=cost_center, department=department, project=project
+	)
 
 	invoices = query.run(as_dict=True)
 
@@ -165,10 +169,11 @@ def get_top_creditors(limit=10, company=None, cost_center=None, department=None,
 		query = query.where(pi.company.isin(company))
 	else:
 		query = query.where(pi.company == company)
-	query = apply_dimension_filters(query, pi, cost_center=cost_center, department=department, project=project)
+	query = apply_dimension_filters(
+		query, pi, cost_center=cost_center, department=department, project=project
+	)
 	creditors = (
-		query
-		.groupby(pi.supplier)
+		query.groupby(pi.supplier)
 		.orderby(fn.Sum(pi.outstanding_amount), order=frappe.qb.desc)
 		.limit(limit)
 		.run(as_dict=True)

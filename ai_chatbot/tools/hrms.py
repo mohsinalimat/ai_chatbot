@@ -23,6 +23,7 @@ def _primary(company):
 	"""Get primary company name (first in list or string as-is)."""
 	return company[0] if isinstance(company, list) else company
 
+
 _HRMS_NOT_INSTALLED = {
 	"error": (
 		"HRMS app is not installed. Please install the HRMS app "
@@ -89,9 +90,7 @@ def get_employee_count(department=None, status="Active", designation=None, compa
 
 	dept_rows = dept_query.run(as_dict=True)
 
-	departments = [
-		{"department": r.department or "Unassigned", "count": r["count"]} for r in dept_rows
-	]
+	departments = [{"department": r.department or "Unassigned", "count": r["count"]} for r in dept_rows]
 
 	pie_data = [{"name": d["department"], "value": d["count"]} for d in departments]
 
@@ -117,8 +116,7 @@ def get_employee_count(department=None, status="Active", designation=None, compa
 	name="get_attendance_summary",
 	category="hrms",
 	description=(
-		"Get attendance summary showing present, absent, on leave, "
-		"half day, and work from home counts"
+		"Get attendance summary showing present, absent, on leave, half day, and work from home counts"
 	),
 	parameters={
 		"from_date": {
@@ -316,19 +314,24 @@ def get_leave_balance(employee=None, leave_type=None, company=None):
 		key = (a.employee, a.leave_type)
 		consumed = consumed_map.get(key, 0)
 		balance = flt(a.allocated) - consumed
-		balances.append({
-			"employee": a.employee,
-			"employee_name": a.employee_name,
-			"leave_type": a.leave_type,
-			"allocated": flt(a.allocated),
-			"consumed": consumed,
-			"balance": balance,
-		})
+		balances.append(
+			{
+				"employee": a.employee,
+				"employee_name": a.employee_name,
+				"leave_type": a.leave_type,
+				"allocated": flt(a.allocated),
+				"consumed": consumed,
+				"balance": balance,
+			}
+		)
 
-	return build_company_context({
-		"leave_balances": balances,
-		"total_entries": len(balances),
-	}, _primary(company))
+	return build_company_context(
+		{
+			"leave_balances": balances,
+			"total_entries": len(balances),
+		},
+		_primary(company),
+	)
 
 
 # ---------------------------------------------------------------------------
@@ -575,20 +578,23 @@ def get_employee_turnover(from_date=None, to_date=None, company=None):
 
 	turnover_rate = round(left / (active + left) * 100, 1) if (active + left) > 0 else 0
 
-	return build_company_context({
-		"new_hires": joined,
-		"exits": left,
-		"active_employees": active,
-		"turnover_rate": turnover_rate,
-		"period": {"from": from_date, "to": to_date},
-		"echart_option": build_multi_series_chart(
-			title="Employee Turnover",
-			categories=["Period"],
-			series_list=[
-				{"name": "New Hires", "data": [joined]},
-				{"name": "Exits", "data": [left]},
-			],
-			y_axis_name="Employees",
-			chart_type="bar",
-		),
-	}, _primary(company))
+	return build_company_context(
+		{
+			"new_hires": joined,
+			"exits": left,
+			"active_employees": active,
+			"turnover_rate": turnover_rate,
+			"period": {"from": from_date, "to": to_date},
+			"echart_option": build_multi_series_chart(
+				title="Employee Turnover",
+				categories=["Period"],
+				series_list=[
+					{"name": "New Hires", "data": [joined]},
+					{"name": "Exits", "data": [left]},
+				],
+				y_axis_name="Employees",
+				chart_type="bar",
+			),
+		},
+		_primary(company),
+	)

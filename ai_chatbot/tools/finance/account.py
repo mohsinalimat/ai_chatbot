@@ -25,9 +25,18 @@ def _primary(company):
 	category="finance",
 	description="Get financial summary including revenue, expenses, and profit for a period",
 	parameters={
-		"from_date": {"type": "string", "description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start."},
-		"to_date": {"type": "string", "description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end."},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
+		},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Sales Invoice", "Purchase Invoice"],
 )
@@ -87,7 +96,10 @@ def get_financial_summary(from_date=None, to_date=None, company=None):
 	description="Analyze cash flow patterns and trends over a period",
 	parameters={
 		"months": {"type": "integer", "description": "Number of months to analyze (default 6)"},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Payment Entry"],
 )

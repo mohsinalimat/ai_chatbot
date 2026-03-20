@@ -157,13 +157,15 @@ def get_gl_summary(
 	summary = []
 	for row in rows:
 		label = row.group_label or "Unknown"
-		summary.append({
-			"label": label,
-			"total_debit": flt(row.total_debit, 2),
-			"total_credit": flt(row.total_credit, 2),
-			"balance": flt(row.balance, 2),
-			"entry_count": row.entry_count or 0,
-		})
+		summary.append(
+			{
+				"label": label,
+				"total_debit": flt(row.total_debit, 2),
+				"total_credit": flt(row.total_credit, 2),
+				"balance": flt(row.balance, 2),
+				"entry_count": row.entry_count or 0,
+			}
+		)
 
 	# Chart — use horizontal bar for account_name (long labels), bar chart otherwise
 	categories = [s["label"] for s in summary[:15]]
@@ -331,23 +333,28 @@ def get_trial_balance(from_date=None, to_date=None, root_type=None, company=None
 		if not (op_debit or op_credit or p_debit or p_credit):
 			continue
 
-		accounts.append({
-			"account": account,
-			"root_type": rt,
-			"opening_debit": op_debit,
-			"opening_credit": op_credit,
-			"debit": p_debit,
-			"credit": p_credit,
-			"closing_debit": cl_debit,
-			"closing_credit": cl_credit,
-		})
+		accounts.append(
+			{
+				"account": account,
+				"root_type": rt,
+				"opening_debit": op_debit,
+				"opening_credit": op_credit,
+				"debit": p_debit,
+				"credit": p_credit,
+				"closing_debit": cl_debit,
+				"closing_credit": cl_credit,
+			}
+		)
 
 		# Accumulate root_type subtotals
 		if rt not in root_type_subtotals:
 			root_type_subtotals[rt] = {
-				"opening_debit": 0, "opening_credit": 0,
-				"debit": 0, "credit": 0,
-				"closing_debit": 0, "closing_credit": 0,
+				"opening_debit": 0,
+				"opening_credit": 0,
+				"debit": 0,
+				"credit": 0,
+				"closing_debit": 0,
+				"closing_credit": 0,
 			}
 		sub = root_type_subtotals[rt]
 		sub["opening_debit"] += op_debit
@@ -505,15 +512,17 @@ def get_account_statement(
 		credit = flt(txn.credit, 2)
 		running_balance = flt(running_balance + debit - credit, 2)
 
-		transactions.append({
-			"posting_date": str(txn.posting_date),
-			"voucher_type": txn.voucher_type or "",
-			"voucher_no": txn.voucher_no or "",
-			"party": txn.party or "",
-			"debit": debit,
-			"credit": credit,
-			"balance": running_balance,
-		})
+		transactions.append(
+			{
+				"posting_date": str(txn.posting_date),
+				"voucher_type": txn.voucher_type or "",
+				"voucher_no": txn.voucher_no or "",
+				"party": txn.party or "",
+				"debit": debit,
+				"credit": credit,
+				"balance": running_balance,
+			}
+		)
 		balance_series.append(running_balance)
 
 	closing_balance = running_balance

@@ -416,9 +416,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 	current_assets = total_receivables + inventory + cash_position
 	current_liabilities = total_payables
 	current_ratio = flt(current_assets / current_liabilities, 2) if current_liabilities else 0
-	quick_ratio = (
-		flt((current_assets - inventory) / current_liabilities, 2) if current_liabilities else 0
-	)
+	quick_ratio = flt((current_assets - inventory) / current_liabilities, 2) if current_liabilities else 0
 
 	# Efficiency
 	dso = flt((total_receivables / revenue) * days_in_period, 1) if revenue else 0
@@ -459,7 +457,9 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 	prev_net_profit = prev_revenue - prev_cogs
 
 	rev_yoy = flt(((revenue - prev_revenue) / prev_revenue) * 100, 1) if prev_revenue else None
-	profit_yoy = flt(((net_profit - prev_net_profit) / abs(prev_net_profit)) * 100, 1) if prev_net_profit else None
+	profit_yoy = (
+		flt(((net_profit - prev_net_profit) / abs(prev_net_profit)) * 100, 1) if prev_net_profit else None
+	)
 
 	def _trend(change_pct):
 		if change_pct is None:

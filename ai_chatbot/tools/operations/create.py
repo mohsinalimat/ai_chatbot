@@ -91,7 +91,10 @@ def create_lead(
 			"type": "string",
 			"description": "Sales stage (e.g. 'Prospecting', 'Qualification', 'Proposal/Price Quote')",
 		},
-		"company": {"type": "string", "description": "Company name. Optional — omit to use user's default company."},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
 	},
 	doctypes=["Opportunity"],
 )

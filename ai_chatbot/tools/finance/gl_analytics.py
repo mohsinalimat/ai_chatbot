@@ -15,13 +15,8 @@ from ai_chatbot.core.config import get_fiscal_year_dates
 from ai_chatbot.core.session_context import get_company_filter
 from ai_chatbot.data.charts import build_bar_chart, build_horizontal_bar, build_line_chart
 from ai_chatbot.data.currency import build_currency_response
+from ai_chatbot.tools.finance.common import primary
 from ai_chatbot.tools.registry import register_tool
-
-
-def _primary(company):
-	"""Get primary company name (first in list or string as-is)."""
-	return company[0] if isinstance(company, list) else company
-
 
 # Maps group_by parameter values to their query fields
 GROUP_BY_FIELDS = {
@@ -103,7 +98,7 @@ def get_gl_summary(
 	company = get_company_filter(company)
 
 	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
+		fy_from, fy_to = get_fiscal_year_dates(primary(company))
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
@@ -201,7 +196,7 @@ def get_gl_summary(
 		"period": {"from": from_date, "to": to_date},
 		"echart_option": chart,
 	}
-	return build_currency_response(result, _primary(company))
+	return build_currency_response(result, primary(company))
 
 
 @register_tool(
@@ -237,7 +232,7 @@ def get_trial_balance(from_date=None, to_date=None, root_type=None, company=None
 	company = get_company_filter(company)
 
 	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
+		fy_from, fy_to = get_fiscal_year_dates(primary(company))
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
@@ -386,7 +381,7 @@ def get_trial_balance(from_date=None, to_date=None, root_type=None, company=None
 		"account_count": len(accounts),
 		"period": {"from": from_date, "to": to_date},
 	}
-	return build_currency_response(result, _primary(company))
+	return build_currency_response(result, primary(company))
 
 
 @register_tool(
@@ -440,7 +435,7 @@ def get_account_statement(
 	company = get_company_filter(company)
 
 	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
+		fy_from, fy_to = get_fiscal_year_dates(primary(company))
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
@@ -554,4 +549,4 @@ def get_account_statement(
 	if chart:
 		result["echart_option"] = chart
 
-	return build_currency_response(result, _primary(company))
+	return build_currency_response(result, primary(company))

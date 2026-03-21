@@ -12,19 +12,8 @@ from frappe.utils import date_diff, flt
 from ai_chatbot.core.config import get_fiscal_year_dates
 from ai_chatbot.core.session_context import get_company_filter
 from ai_chatbot.data.currency import build_currency_response
+from ai_chatbot.tools.finance.common import apply_company_filter, primary
 from ai_chatbot.tools.registry import register_tool
-
-
-def _primary(company):
-	"""Get primary company name (first in list or string as-is)."""
-	return company[0] if isinstance(company, list) else company
-
-
-def _apply_company_filter(query, doctype_ref, company):
-	"""Apply company filter supporting both single string and list."""
-	if isinstance(company, list):
-		return query.where(doctype_ref.company.isin(company))
-	return query.where(doctype_ref.company == company)
 
 
 @register_tool(
@@ -51,7 +40,7 @@ def get_working_capital_summary(company=None):
 		.where(si.docstatus == 1)
 		.where(si.outstanding_amount > 0)
 	)
-	recv_q = _apply_company_filter(recv_q, si, company)
+	recv_q = apply_company_filter(recv_q, si, company)
 	recv_result = recv_q.run(as_dict=True)
 	receivables = flt(recv_result[0].total) if recv_result else 0
 
@@ -63,7 +52,7 @@ def get_working_capital_summary(company=None):
 		.where(pi.docstatus == 1)
 		.where(pi.outstanding_amount > 0)
 	)
-	pay_q = _apply_company_filter(pay_q, pi, company)
+	pay_q = apply_company_filter(pay_q, pi, company)
 	pay_result = pay_q.run(as_dict=True)
 	payables = flt(pay_result[0].total) if pay_result else 0
 
@@ -96,7 +85,7 @@ def get_working_capital_summary(company=None):
 		"current_liabilities": flt(current_liabilities, 2),
 		"net_working_capital": flt(net_working_capital, 2),
 	}
-	return build_currency_response(result, _primary(company))
+	return build_currency_response(result, primary(company))
 
 
 @register_tool(
@@ -124,7 +113,7 @@ def get_cash_conversion_cycle(from_date=None, to_date=None, company=None):
 	company = get_company_filter(company)
 
 	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
+		fy_from, fy_to = get_fiscal_year_dates(primary(company))
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
@@ -139,7 +128,7 @@ def get_cash_conversion_cycle(from_date=None, to_date=None, company=None):
 		.where(si.posting_date >= from_date)
 		.where(si.posting_date <= to_date)
 	)
-	rev_q = _apply_company_filter(rev_q, si, company)
+	rev_q = apply_company_filter(rev_q, si, company)
 	rev_result = rev_q.run(as_dict=True)
 	revenue = flt(rev_result[0].total) if rev_result else 0
 
@@ -150,7 +139,7 @@ def get_cash_conversion_cycle(from_date=None, to_date=None, company=None):
 		.where(si.docstatus == 1)
 		.where(si.outstanding_amount > 0)
 	)
-	recv_q = _apply_company_filter(recv_q, si, company)
+	recv_q = apply_company_filter(recv_q, si, company)
 	recv_total = recv_q.run(as_dict=True)
 	avg_receivables = flt(recv_total[0].total) if recv_total else 0
 
@@ -163,7 +152,7 @@ def get_cash_conversion_cycle(from_date=None, to_date=None, company=None):
 		.where(pi.posting_date >= from_date)
 		.where(pi.posting_date <= to_date)
 	)
-	cogs_q = _apply_company_filter(cogs_q, pi, company)
+	cogs_q = apply_company_filter(cogs_q, pi, company)
 	cogs_result = cogs_q.run(as_dict=True)
 	cogs = flt(cogs_result[0].total) if cogs_result else 0
 
@@ -190,7 +179,7 @@ def get_cash_conversion_cycle(from_date=None, to_date=None, company=None):
 		.where(pi.docstatus == 1)
 		.where(pi.outstanding_amount > 0)
 	)
-	pay_q = _apply_company_filter(pay_q, pi, company)
+	pay_q = apply_company_filter(pay_q, pi, company)
 	pay_result = pay_q.run(as_dict=True)
 	avg_payables = flt(pay_result[0].total) if pay_result else 0
 
@@ -221,4 +210,4 @@ def get_cash_conversion_cycle(from_date=None, to_date=None, company=None):
 			"cogs": flt(cogs, 2),
 		},
 	}
-	return build_currency_response(result, _primary(company))
+	return build_currency_response(result, primary(company))

@@ -29,7 +29,7 @@ from ai_chatbot.tools.registry import register_tool
 			"type": "string",
 			"description": (
 				"Name of the registered tool to run across companies "
-				"(e.g. 'get_sales_analytics', 'get_receivable_aging', 'get_financial_overview')"
+				"(e.g. 'get_sales_analytics', 'get_party_aging', 'get_financial_overview')"
 			),
 		},
 		"tool_params": {

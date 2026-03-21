@@ -217,6 +217,7 @@ def _ensure_tools_loaded():
 		import ai_chatbot.tools.buying
 		import ai_chatbot.tools.crm
 		import ai_chatbot.tools.finance.account
+		import ai_chatbot.tools.finance.aging
 		import ai_chatbot.tools.finance.analytics
 		import ai_chatbot.tools.finance.budget
 		import ai_chatbot.tools.finance.cash_flow

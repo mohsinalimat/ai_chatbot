@@ -88,13 +88,29 @@ def get_lead_statistics(from_date=None, to_date=None, company=None):
 
 
 # ---------------------------------------------------------------------------
-# 2. Opportunity Pipeline (existing — updated with ECharts)
+# 2. Opportunity Analytics (Phase 11D: merged pipeline + by_stage)
 # ---------------------------------------------------------------------------
 @register_tool(
-	name="get_opportunity_pipeline",
+	name="get_opportunity_analytics",
 	category="crm",
-	description="Get sales opportunity pipeline with stages and values",
+	description=(
+		"Analyze sales opportunities. Use mode='pipeline' for pipeline summary with top opportunities, "
+		"or mode='by_stage' for stage-grouped analysis over a date range."
+	),
 	parameters={
+		"mode": {
+			"type": "string",
+			"description": "Analysis mode: 'pipeline' for overall pipeline, 'by_stage' for stage breakdown",
+			"enum": ["pipeline", "by_stage"],
+		},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start. Used only in 'by_stage' mode.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end. Used only in 'by_stage' mode.",
+		},
 		"status": {
 			"type": "string",
 			"description": "Filter by status (Open, Converted, Lost, Quotation, Replied, Closed)",
@@ -106,9 +122,19 @@ def get_lead_statistics(from_date=None, to_date=None, company=None):
 	},
 	doctypes=["Opportunity"],
 )
-def get_opportunity_pipeline(status=None, company=None):
-	"""Get opportunity pipeline with multi-company, currency support, and bar chart."""
+def get_opportunity_analytics(mode="pipeline", from_date=None, to_date=None, status=None, company=None):
+	"""Unified opportunity analytics — replaces get_opportunity_pipeline
+	and get_opportunity_by_stage (Phase 11D consolidation).
+	"""
 	company = get_company_filter(company)
+
+	if mode == "by_stage":
+		return _opportunity_by_stage(from_date, to_date, status, company)
+	return _opportunity_pipeline(status, company)
+
+
+def _opportunity_pipeline(status, company):
+	"""Pipeline mode: current opportunity pipeline with stages and top opportunities."""
 	currency = get_company_currency(_primary(company))
 
 	company_filter = {"company": ["in", company]} if isinstance(company, list) else {"company": company}
@@ -138,7 +164,6 @@ def get_opportunity_pipeline(status=None, company=None):
 		stage = opp.get("sales_stage") or "Unassigned"
 		stage_data[stage] = stage_data.get(stage, 0) + amount
 
-	# Build stage summary instead of returning raw records
 	stage_summary = [
 		{
 			"stage": stage,
@@ -164,13 +189,13 @@ def get_opportunity_pipeline(status=None, company=None):
 	]
 
 	result = {
+		"mode": "pipeline",
 		"stage_summary": stage_summary,
 		"top_opportunities": top_opportunities,
 		"total_value": flt(total_value, 2),
 		"count": len(opportunities),
 	}
 
-	# Add ECharts bar chart grouped by sales stage
 	if stage_data:
 		categories = [s["stage"] for s in stage_summary]
 		values = [s["value"] for s in stage_summary]
@@ -185,8 +210,71 @@ def get_opportunity_pipeline(status=None, company=None):
 	return build_currency_response(result, _primary(company))
 
 
+def _opportunity_by_stage(from_date, to_date, status, company):
+	"""By-stage mode: opportunities grouped by sales stage over a date range."""
+	if not from_date or not to_date:
+		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
+		from_date = from_date or fy_from
+		to_date = to_date or fy_to
+
+	opp = frappe.qb.DocType("Opportunity")
+
+	query = (
+		frappe.qb.from_(opp)
+		.select(
+			opp.sales_stage,
+			fn.Count("*").as_("count"),
+			fn.Sum(opp.base_opportunity_amount).as_("total_value"),
+		)
+		.where(opp.transaction_date >= from_date)
+		.where(opp.transaction_date <= to_date)
+		.groupby(opp.sales_stage)
+		.orderby(fn.Sum(opp.base_opportunity_amount), order=frappe.qb.desc)
+	)
+	if isinstance(company, list):
+		query = query.where(opp.company.isin(company))
+	else:
+		query = query.where(opp.company == company)
+
+	if status:
+		query = query.where(opp.status == status)
+
+	rows = query.run(as_dict=True)
+
+	stages = [
+		{
+			"sales_stage": r.sales_stage or "Unassigned",
+			"count": r["count"],
+			"total_value": flt(r.total_value, 2),
+		}
+		for r in rows
+	]
+
+	categories = [s["sales_stage"] for s in stages]
+	values = [s["total_value"] for s in stages]
+
+	result = {
+		"mode": "by_stage",
+		"stages": stages,
+		"total_opportunities": sum(s["count"] for s in stages),
+		"total_pipeline_value": flt(sum(s["total_value"] for s in stages), 2),
+		"period": {"from": from_date, "to": to_date},
+	}
+
+	if categories:
+		result["echart_option"] = build_bar_chart(
+			title="Opportunities by Sales Stage",
+			categories=categories,
+			series_data=values,
+			y_axis_name="Value",
+			series_name="Pipeline Value",
+		)
+
+	return build_currency_response(result, _primary(company))
+
+
 # ---------------------------------------------------------------------------
-# 3. Lead Conversion Rate (NEW)
+# 3. Lead Conversion Rate
 # ---------------------------------------------------------------------------
 @register_tool(
 	name="get_lead_conversion_rate",
@@ -429,94 +517,3 @@ def get_sales_funnel(from_date=None, to_date=None, company=None):
 	}
 
 	return build_company_context(result, _primary(company))
-
-
-# ---------------------------------------------------------------------------
-# 6. Opportunity by Stage (NEW)
-# ---------------------------------------------------------------------------
-@register_tool(
-	name="get_opportunity_by_stage",
-	category="crm",
-	description="Get opportunities grouped by sales stage with total value and count per stage",
-	parameters={
-		"from_date": {
-			"type": "string",
-			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
-		},
-		"to_date": {
-			"type": "string",
-			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
-		},
-		"status": {
-			"type": "string",
-			"description": "Filter by opportunity status (Open, Converted, Lost, Quotation, Replied, Closed)",
-		},
-		"company": {
-			"type": "string",
-			"description": "Company name. Optional — omit to use user's default company.",
-		},
-	},
-	doctypes=["Opportunity"],
-)
-def get_opportunity_by_stage(from_date=None, to_date=None, status=None, company=None):
-	"""Get opportunities grouped by sales stage with bar chart."""
-	company = get_company_filter(company)
-
-	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
-		from_date = from_date or fy_from
-		to_date = to_date or fy_to
-
-	opp = frappe.qb.DocType("Opportunity")
-
-	query = (
-		frappe.qb.from_(opp)
-		.select(
-			opp.sales_stage,
-			fn.Count("*").as_("count"),
-			fn.Sum(opp.base_opportunity_amount).as_("total_value"),
-		)
-		.where(opp.transaction_date >= from_date)
-		.where(opp.transaction_date <= to_date)
-		.groupby(opp.sales_stage)
-		.orderby(fn.Sum(opp.base_opportunity_amount), order=frappe.qb.desc)
-	)
-	if isinstance(company, list):
-		query = query.where(opp.company.isin(company))
-	else:
-		query = query.where(opp.company == company)
-
-	if status:
-		query = query.where(opp.status == status)
-
-	rows = query.run(as_dict=True)
-
-	stages = [
-		{
-			"sales_stage": r.sales_stage or "Unassigned",
-			"count": r["count"],
-			"total_value": flt(r.total_value, 2),
-		}
-		for r in rows
-	]
-
-	categories = [s["sales_stage"] for s in stages]
-	values = [s["total_value"] for s in stages]
-
-	result = {
-		"stages": stages,
-		"total_opportunities": sum(s["count"] for s in stages),
-		"total_pipeline_value": flt(sum(s["total_value"] for s in stages), 2),
-		"period": {"from": from_date, "to": to_date},
-	}
-
-	if categories:
-		result["echart_option"] = build_bar_chart(
-			title="Opportunities by Sales Stage",
-			categories=categories,
-			series_data=values,
-			y_axis_name="Value",
-			series_name="Pipeline Value",
-		)
-
-	return build_currency_response(result, _primary(company))

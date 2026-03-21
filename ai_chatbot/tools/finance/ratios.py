@@ -2,7 +2,10 @@
 # For license information, please see license.txt
 """
 Financial Ratio Tools
-Liquidity, profitability, and efficiency ratios for AI Chatbot
+Unified liquidity, profitability, and efficiency ratios for AI Chatbot.
+
+Phase 11D: Merged get_liquidity_ratios, get_profitability_ratios, and
+get_efficiency_ratios into a single get_financial_ratios tool.
 """
 
 import frappe
@@ -13,19 +16,8 @@ from ai_chatbot.core.config import get_fiscal_year_dates
 from ai_chatbot.core.dimensions import apply_dimension_filters
 from ai_chatbot.core.session_context import get_company_filter
 from ai_chatbot.data.currency import build_currency_response
+from ai_chatbot.tools.finance.common import apply_company_filter, primary
 from ai_chatbot.tools.registry import register_tool
-
-
-def _primary(company):
-	"""Get primary company name (first in list or string as-is)."""
-	return company[0] if isinstance(company, list) else company
-
-
-def _apply_company_filter(query, doctype_ref, company):
-	"""Apply company filter supporting both single string and list."""
-	if isinstance(company, list):
-		return query.where(doctype_ref.company.isin(company))
-	return query.where(doctype_ref.company == company)
 
 
 def _get_current_assets_liabilities(company):
@@ -45,7 +37,7 @@ def _get_current_assets_liabilities(company):
 		.where(si.docstatus == 1)
 		.where(si.outstanding_amount > 0)
 	)
-	recv_q = _apply_company_filter(recv_q, si, company)
+	recv_q = apply_company_filter(recv_q, si, company)
 	recv_result = recv_q.run(as_dict=True)
 	receivables = flt(recv_result[0].total) if recv_result else 0
 
@@ -57,7 +49,7 @@ def _get_current_assets_liabilities(company):
 		.where(pi.docstatus == 1)
 		.where(pi.outstanding_amount > 0)
 	)
-	pay_q = _apply_company_filter(pay_q, pi, company)
+	pay_q = apply_company_filter(pay_q, pi, company)
 	pay_result = pay_q.run(as_dict=True)
 	payables = flt(pay_result[0].total) if pay_result else 0
 
@@ -102,7 +94,7 @@ def _get_current_assets_liabilities(company):
 			.where(gle.account.isin(cash_account_names))
 			.where(gle.is_cancelled == 0)
 		)
-		cash_q = _apply_company_filter(cash_q, gle, company)
+		cash_q = apply_company_filter(cash_q, gle, company)
 		cash_result = cash_q.run(as_dict=True)
 		cash_balance = flt(cash_result[0].balance) if cash_result else 0
 
@@ -114,23 +106,8 @@ def _get_current_assets_liabilities(company):
 	}
 
 
-@register_tool(
-	name="get_liquidity_ratios",
-	category="finance",
-	description="Calculate liquidity ratios: current ratio and quick ratio",
-	parameters={
-		"company": {
-			"type": "string",
-			"description": "Company name. Optional — omit to use user's default company.",
-		},
-	},
-	doctypes=["Sales Invoice", "Purchase Invoice", "GL Entry"],
-)
-def get_liquidity_ratios(company=None):
-	"""Current Ratio = Current Assets / Current Liabilities.
-	Quick Ratio = (Current Assets - Inventory) / Current Liabilities.
-	"""
-	company = get_company_filter(company)
+def _calc_liquidity(company):
+	"""Calculate liquidity ratios: current ratio and quick ratio."""
 	components = _get_current_assets_liabilities(company)
 
 	current_assets = components["receivables"] + components["inventory"] + components["cash_balance"]
@@ -141,7 +118,7 @@ def get_liquidity_ratios(company=None):
 		flt((current_assets - components["inventory"]) / current_liabilities, 2) if current_liabilities else 0
 	)
 
-	result = {
+	return {
 		"current_ratio": current_ratio,
 		"quick_ratio": quick_ratio,
 		"components": {
@@ -153,43 +130,10 @@ def get_liquidity_ratios(company=None):
 		},
 		"as_of": nowdate(),
 	}
-	return build_currency_response(result, _primary(company))
 
 
-@register_tool(
-	name="get_profitability_ratios",
-	category="finance",
-	description="Calculate profitability ratios: gross margin, net margin, and return on assets (ROA)",
-	parameters={
-		"from_date": {
-			"type": "string",
-			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
-		},
-		"to_date": {
-			"type": "string",
-			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
-		},
-		"company": {
-			"type": "string",
-			"description": "Company name. Optional — omit to use user's default company.",
-		},
-		"cost_center": {"type": "string", "description": "Filter by cost center"},
-		"department": {"type": "string", "description": "Filter by department"},
-		"project": {"type": "string", "description": "Filter by project"},
-	},
-	doctypes=["Sales Invoice", "Purchase Invoice", "GL Entry"],
-)
-def get_profitability_ratios(
-	from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None
-):
-	"""Gross Margin, Net Margin, ROA."""
-	company = get_company_filter(company)
-
-	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
-		from_date = from_date or fy_from
-		to_date = to_date or fy_to
-
+def _calc_profitability_ratios(company, from_date, to_date, cost_center, department, project):
+	"""Calculate profitability ratios: gross margin, net margin, ROA."""
 	# Revenue
 	si = frappe.qb.DocType("Sales Invoice")
 	rev_q = (
@@ -199,7 +143,7 @@ def get_profitability_ratios(
 		.where(si.posting_date >= from_date)
 		.where(si.posting_date <= to_date)
 	)
-	rev_q = _apply_company_filter(rev_q, si, company)
+	rev_q = apply_company_filter(rev_q, si, company)
 	rev_q = apply_dimension_filters(
 		rev_q, si, cost_center=cost_center, department=department, project=project
 	)
@@ -215,7 +159,7 @@ def get_profitability_ratios(
 		.where(pi.posting_date >= from_date)
 		.where(pi.posting_date <= to_date)
 	)
-	cogs_q = _apply_company_filter(cogs_q, pi, company)
+	cogs_q = apply_company_filter(cogs_q, pi, company)
 	cogs_q = apply_dimension_filters(
 		cogs_q, pi, cost_center=cost_center, department=department, project=project
 	)
@@ -240,13 +184,13 @@ def get_profitability_ratios(
 		.where(acc.root_type == "Asset")
 		.where(gle.is_cancelled == 0)
 	)
-	asset_q = _apply_company_filter(asset_q, gle, company)
+	asset_q = apply_company_filter(asset_q, gle, company)
 	asset_result = asset_q.run(as_dict=True)
 	total_assets = flt(asset_result[0].total_assets) if asset_result else 0
 
 	roa_pct = flt((net_profit / total_assets) * 100, 1) if total_assets else 0
 
-	result = {
+	return {
 		"gross_margin_pct": gross_margin_pct,
 		"net_margin_pct": net_margin_pct,
 		"roa_pct": roa_pct,
@@ -257,43 +201,10 @@ def get_profitability_ratios(
 		"total_assets": flt(total_assets, 2),
 		"period": {"from": from_date, "to": to_date},
 	}
-	return build_currency_response(result, _primary(company))
 
 
-@register_tool(
-	name="get_efficiency_ratios",
-	category="finance",
-	description="Calculate efficiency ratios: inventory turnover, receivable days (DSO), and payable days (DPO)",
-	parameters={
-		"from_date": {
-			"type": "string",
-			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
-		},
-		"to_date": {
-			"type": "string",
-			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end.",
-		},
-		"company": {
-			"type": "string",
-			"description": "Company name. Optional — omit to use user's default company.",
-		},
-		"cost_center": {"type": "string", "description": "Filter by cost center"},
-		"department": {"type": "string", "description": "Filter by department"},
-		"project": {"type": "string", "description": "Filter by project"},
-	},
-	doctypes=["Sales Invoice", "Purchase Invoice"],
-)
-def get_efficiency_ratios(
-	from_date=None, to_date=None, company=None, cost_center=None, department=None, project=None
-):
-	"""Inventory Turnover, Receivable Days (DSO), Payable Days (DPO)."""
-	company = get_company_filter(company)
-
-	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
-		from_date = from_date or fy_from
-		to_date = to_date or fy_to
-
+def _calc_efficiency(company, from_date, to_date, cost_center, department, project):
+	"""Calculate efficiency ratios: inventory turnover, DSO, DPO."""
 	days_in_period = max(1, date_diff(to_date, from_date))
 
 	# Revenue
@@ -305,7 +216,7 @@ def get_efficiency_ratios(
 		.where(si.posting_date >= from_date)
 		.where(si.posting_date <= to_date)
 	)
-	rev_q = _apply_company_filter(rev_q, si, company)
+	rev_q = apply_company_filter(rev_q, si, company)
 	rev_q = apply_dimension_filters(
 		rev_q, si, cost_center=cost_center, department=department, project=project
 	)
@@ -321,7 +232,7 @@ def get_efficiency_ratios(
 		.where(pi.posting_date >= from_date)
 		.where(pi.posting_date <= to_date)
 	)
-	cogs_q = _apply_company_filter(cogs_q, pi, company)
+	cogs_q = apply_company_filter(cogs_q, pi, company)
 	cogs_q = apply_dimension_filters(
 		cogs_q, pi, cost_center=cost_center, department=department, project=project
 	)
@@ -335,7 +246,7 @@ def get_efficiency_ratios(
 		.where(si.docstatus == 1)
 		.where(si.outstanding_amount > 0)
 	)
-	recv_q = _apply_company_filter(recv_q, si, company)
+	recv_q = apply_company_filter(recv_q, si, company)
 	recv_q = apply_dimension_filters(
 		recv_q, si, cost_center=cost_center, department=department, project=project
 	)
@@ -365,7 +276,7 @@ def get_efficiency_ratios(
 		.where(pi.docstatus == 1)
 		.where(pi.outstanding_amount > 0)
 	)
-	pay_q = _apply_company_filter(pay_q, pi, company)
+	pay_q = apply_company_filter(pay_q, pi, company)
 	pay_q = apply_dimension_filters(
 		pay_q, pi, cost_center=cost_center, department=department, project=project
 	)
@@ -381,7 +292,7 @@ def get_efficiency_ratios(
 	# DPO = (Avg Payables / COGS) * Days
 	payable_days = flt((avg_payables / cogs) * days_in_period, 1) if cogs else 0
 
-	result = {
+	return {
 		"inventory_turnover": inventory_turnover,
 		"receivable_days": receivable_days,
 		"payable_days": payable_days,
@@ -395,4 +306,72 @@ def get_efficiency_ratios(
 			"avg_payables": flt(avg_payables, 2),
 		},
 	}
-	return build_currency_response(result, _primary(company))
+
+
+@register_tool(
+	name="get_financial_ratios",
+	category="finance",
+	description=(
+		"Calculate financial ratios. Use type='liquidity' for current/quick ratio, "
+		"type='profitability' for gross margin/net margin/ROA, "
+		"type='efficiency' for inventory turnover/DSO/DPO, "
+		"or type='all' for a complete set."
+	),
+	parameters={
+		"type": {
+			"type": "string",
+			"description": "Ratio type: 'liquidity', 'profitability', 'efficiency', or 'all'",
+			"enum": ["liquidity", "profitability", "efficiency", "all"],
+		},
+		"from_date": {
+			"type": "string",
+			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start. Not used for liquidity ratios.",
+		},
+		"to_date": {
+			"type": "string",
+			"description": "End date (YYYY-MM-DD). Optional — omit to use current fiscal year end. Not used for liquidity ratios.",
+		},
+		"company": {
+			"type": "string",
+			"description": "Company name. Optional — omit to use user's default company.",
+		},
+		"cost_center": {"type": "string", "description": "Filter by cost center"},
+		"department": {"type": "string", "description": "Filter by department"},
+		"project": {"type": "string", "description": "Filter by project"},
+	},
+	doctypes=["Sales Invoice", "Purchase Invoice", "GL Entry"],
+)
+def get_financial_ratios(
+	type="all",
+	from_date=None,
+	to_date=None,
+	company=None,
+	cost_center=None,
+	department=None,
+	project=None,
+):
+	"""Unified financial ratios — replaces get_liquidity_ratios, get_profitability_ratios,
+	and get_efficiency_ratios (Phase 11D consolidation).
+	"""
+	company = get_company_filter(company)
+
+	# Resolve fiscal year dates for profitability/efficiency calculations
+	if not from_date or not to_date:
+		fy_from, fy_to = get_fiscal_year_dates(primary(company))
+		from_date = from_date or fy_from
+		to_date = to_date or fy_to
+
+	result = {"type": type}
+
+	if type in ("liquidity", "all"):
+		result["liquidity"] = _calc_liquidity(company)
+
+	if type in ("profitability", "all"):
+		result["profitability"] = _calc_profitability_ratios(
+			company, from_date, to_date, cost_center, department, project
+		)
+
+	if type in ("efficiency", "all"):
+		result["efficiency"] = _calc_efficiency(company, from_date, to_date, cost_center, department, project)
+
+	return build_currency_response(result, primary(company))

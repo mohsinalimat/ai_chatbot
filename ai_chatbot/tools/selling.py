@@ -188,24 +188,40 @@ def get_top_customers(limit=10, from_date=None, to_date=None, company=None):
 
 
 @register_tool(
-	name="get_sales_trend",
+	name="get_transaction_trend",
 	category="selling",
-	description="Get monthly sales revenue trend over time",
+	description=(
+		"Get monthly transaction trend over time. "
+		"Use type='sales' for revenue trend (Sales Invoice) or type='purchase' for spending trend (Purchase Invoice)."
+	),
 	parameters={
+		"type": {
+			"type": "string",
+			"description": "Transaction type: 'sales' or 'purchase'",
+			"enum": ["sales", "purchase"],
+		},
 		"months": {"type": "integer", "description": "Number of months to show (default 12)"},
 		"company": {
 			"type": "string",
 			"description": "Company name. Optional — omit to use user's default company.",
 		},
 	},
-	doctypes=["Sales Invoice"],
+	doctypes=["Sales Invoice", "Purchase Invoice"],
 )
-def get_sales_trend(months=12, company=None):
-	"""Monthly revenue time series from Sales Invoice."""
+def get_transaction_trend(type="sales", months=12, company=None):
+	"""Monthly revenue/spending time series — unified sales + purchase trend.
+
+	Replaces get_sales_trend and get_purchase_trend (Phase 11D consolidation).
+	"""
 	company = get_company_filter(company)
 
+	is_sales = type == "sales"
+	doctype = "Sales Invoice" if is_sales else "Purchase Invoice"
+	value_label = "revenue" if is_sales else "spending"
+	chart_title = "Monthly Sales Revenue" if is_sales else "Monthly Purchase Spending"
+
 	data = get_time_series(
-		doctype="Sales Invoice",
+		doctype=doctype,
 		value_field="base_grand_total",
 		date_field="posting_date",
 		filters={"docstatus": 1},
@@ -213,23 +229,24 @@ def get_sales_trend(months=12, company=None):
 		months=months,
 	)
 
-	total_revenue = sum(flt(d.get("total", 0)) for d in data)
+	total = sum(flt(d.get("total", 0)) for d in data)
 	categories = [d["month"] for d in data]
 	values = [flt(d["total"], 2) for d in data]
 
 	result = {
+		"type": type,
 		"months": [
-			{"month": d["month"], "revenue": flt(d["total"], 2), "invoice_count": d.get("count", 0)}
+			{"month": d["month"], value_label: flt(d["total"], 2), "invoice_count": d.get("count", 0)}
 			for d in data
 		],
-		"total_revenue": flt(total_revenue, 2),
+		f"total_{value_label}": flt(total, 2),
 		"period_months": months,
 		"echart_option": build_line_chart(
-			title="Monthly Sales Revenue",
+			title=chart_title,
 			categories=categories,
 			series_data=values,
-			y_axis_name="Revenue",
-			series_name="Revenue",
+			y_axis_name=value_label.title(),
+			series_name=value_label.title(),
 		),
 	}
 	return build_currency_response(result, company[0] if isinstance(company, list) else company)
@@ -298,10 +315,18 @@ def get_sales_by_territory(from_date=None, to_date=None, company=None):
 
 
 @register_tool(
-	name="get_sales_by_item_group",
+	name="get_by_item_group",
 	category="selling",
-	description="Get sales breakdown by item group/product category",
+	description=(
+		"Get transaction breakdown by item group/product category. "
+		"Use type='sales' for sales breakdown or type='purchase' for purchase breakdown."
+	),
 	parameters={
+		"type": {
+			"type": "string",
+			"description": "Transaction type: 'sales' or 'purchase'",
+			"enum": ["sales", "purchase"],
+		},
 		"from_date": {
 			"type": "string",
 			"description": "Start date (YYYY-MM-DD). Optional — omit to use current fiscal year start.",
@@ -316,44 +341,56 @@ def get_sales_by_territory(from_date=None, to_date=None, company=None):
 			"description": "Company name. Optional — omit to use user's default company.",
 		},
 	},
-	doctypes=["Sales Invoice"],
+	doctypes=["Sales Invoice", "Purchase Invoice"],
 )
-def get_sales_by_item_group(from_date=None, to_date=None, limit=10, company=None):
-	"""Sales grouped by item_group from Sales Invoice Item."""
+def get_by_item_group(type="sales", from_date=None, to_date=None, limit=10, company=None):
+	"""Transactions grouped by item_group — unified sales + purchase by item group.
+
+	Replaces get_sales_by_item_group and get_purchase_by_item_group (Phase 11D consolidation).
+	"""
 	limit = get_top_n_limit(limit)
 	company = get_company_filter(company)
+
+	is_sales = type == "sales"
+	parent_doctype = "Sales Invoice" if is_sales else "Purchase Invoice"
+	child_doctype = f"{parent_doctype} Item"
+	chart_title = "Sales by Item Group" if is_sales else "Purchases by Item Group"
+	series_name = "Sales" if is_sales else "Purchases"
 
 	if not from_date or not to_date:
 		fy_from, fy_to = get_fiscal_year_dates(company[0] if isinstance(company, list) else company)
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
-	si = frappe.qb.DocType("Sales Invoice")
-	sii = frappe.qb.DocType("Sales Invoice Item")
+	parent = frappe.qb.DocType(parent_doctype)
+	child = frappe.qb.DocType(child_doctype)
+
+	# Sales Invoice Item uses stock_qty; Purchase Invoice Item uses qty
+	qty_field = child.stock_qty if is_sales else child.qty
 
 	query = (
-		frappe.qb.from_(sii)
-		.join(si)
-		.on(sii.parent == si.name)
+		frappe.qb.from_(child)
+		.join(parent)
+		.on(child.parent == parent.name)
 		.select(
-			sii.item_group,
-			fn.Sum(sii.base_amount).as_("total_amount"),
-			fn.Sum(sii.stock_qty).as_("total_qty"),
+			child.item_group,
+			fn.Sum(child.base_amount).as_("total_amount"),
+			fn.Sum(qty_field).as_("total_qty"),
 			fn.Count("*").as_("line_count"),
 		)
-		.where(si.docstatus == 1)
+		.where(parent.docstatus == 1)
 	)
 
 	if isinstance(company, list):
-		query = query.where(si.company.isin(company))
+		query = query.where(parent.company.isin(company))
 	else:
-		query = query.where(si.company == company)
+		query = query.where(parent.company == company)
 
 	rows = (
-		query.where(si.posting_date >= from_date)
-		.where(si.posting_date <= to_date)
-		.groupby(sii.item_group)
-		.orderby(fn.Sum(sii.base_amount), order=frappe.qb.desc)
+		query.where(parent.posting_date >= from_date)
+		.where(parent.posting_date <= to_date)
+		.groupby(child.item_group)
+		.orderby(fn.Sum(child.base_amount), order=frappe.qb.desc)
 		.limit(limit)
 		.run(as_dict=True)
 	)
@@ -371,14 +408,15 @@ def get_sales_by_item_group(from_date=None, to_date=None, limit=10, company=None
 	values = [ig["total_amount"] for ig in item_groups]
 
 	result = {
+		"type": type,
 		"item_groups": item_groups,
 		"period": {"from": from_date, "to": to_date},
 		"echart_option": build_bar_chart(
-			title="Sales by Item Group",
+			title=chart_title,
 			categories=categories,
 			series_data=values,
 			y_axis_name="Amount",
-			series_name="Sales",
+			series_name=series_name,
 		),
 	}
 	return build_currency_response(result, company[0] if isinstance(company, list) else company)

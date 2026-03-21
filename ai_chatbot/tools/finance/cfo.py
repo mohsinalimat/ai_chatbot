@@ -13,19 +13,8 @@ from ai_chatbot.core.config import get_fiscal_year_dates
 from ai_chatbot.core.session_context import get_company_filter
 from ai_chatbot.data.charts import build_bar_chart, build_multi_series_chart
 from ai_chatbot.data.currency import build_currency_response
+from ai_chatbot.tools.finance.common import apply_company_filter, primary
 from ai_chatbot.tools.registry import register_tool
-
-
-def _primary(company):
-	"""Get primary company name (first in list or string as-is)."""
-	return company[0] if isinstance(company, list) else company
-
-
-def _apply_company_filter(query, doctype_ref, company):
-	"""Apply single or multi-company filter to a query."""
-	if isinstance(company, list):
-		return query.where(doctype_ref.company.isin(company))
-	return query.where(doctype_ref.company == company)
 
 
 @register_tool(
@@ -57,7 +46,7 @@ def get_financial_overview(from_date=None, to_date=None, company=None):
 	company = get_company_filter(company)
 
 	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
+		fy_from, fy_to = get_fiscal_year_dates(primary(company))
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
@@ -229,7 +218,7 @@ def get_financial_overview(from_date=None, to_date=None, company=None):
 			series_name="Amount",
 		),
 	}
-	return build_currency_response(result, _primary(company))
+	return build_currency_response(result, primary(company))
 
 
 @register_tool(
@@ -263,7 +252,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 	company = get_company_filter(company)
 
 	if not from_date or not to_date:
-		fy_from, fy_to = get_fiscal_year_dates(_primary(company))
+		fy_from, fy_to = get_fiscal_year_dates(primary(company))
 		from_date = from_date or fy_from
 		to_date = to_date or fy_to
 
@@ -285,7 +274,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(si.posting_date >= from_date)
 		.where(si.posting_date <= to_date)
 	)
-	rev_query = _apply_company_filter(rev_query, si, company)
+	rev_query = apply_company_filter(rev_query, si, company)
 	rev_result = rev_query.run(as_dict=True)
 	revenue = flt(rev_result[0].revenue) if rev_result else 0
 	invoice_count = rev_result[0].invoice_count if rev_result else 0
@@ -297,7 +286,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(pi.posting_date >= from_date)
 		.where(pi.posting_date <= to_date)
 	)
-	cogs_query = _apply_company_filter(cogs_query, pi, company)
+	cogs_query = apply_company_filter(cogs_query, pi, company)
 	cogs_result = cogs_query.run(as_dict=True)
 	cogs = flt(cogs_result[0].cogs) if cogs_result else 0
 
@@ -311,7 +300,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(si.docstatus == 1)
 		.where(si.outstanding_amount > 0)
 	)
-	recv_query = _apply_company_filter(recv_query, si, company)
+	recv_query = apply_company_filter(recv_query, si, company)
 	recv_result = recv_query.run(as_dict=True)
 	total_receivables = flt(recv_result[0].total) if recv_result else 0
 
@@ -322,7 +311,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(pi.docstatus == 1)
 		.where(pi.outstanding_amount > 0)
 	)
-	pay_query = _apply_company_filter(pay_query, pi, company)
+	pay_query = apply_company_filter(pay_query, pi, company)
 	pay_result = pay_query.run(as_dict=True)
 	total_payables = flt(pay_result[0].total) if pay_result else 0
 
@@ -335,7 +324,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.on(bin_table.warehouse == wh_table.name)
 		.select(fn.Sum(bin_table.stock_value).as_("total"))
 	)
-	inv_query = _apply_company_filter(inv_query, wh_table, company)
+	inv_query = apply_company_filter(inv_query, wh_table, company)
 	inv_result = inv_query.run(as_dict=True)
 	inventory = flt(inv_result[0].total) if inv_result else 0
 
@@ -348,7 +337,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(acc.account_type.isin(["Bank", "Cash"]))
 		.where(acc.is_group == 0)
 	)
-	cash_acc_query = _apply_company_filter(cash_acc_query, acc, company)
+	cash_acc_query = apply_company_filter(cash_acc_query, acc, company)
 	cash_accounts = cash_acc_query.run(as_list=True)
 	cash_account_names = [a[0] for a in cash_accounts] if cash_accounts else []
 
@@ -360,7 +349,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 			.where(gle.account.isin(cash_account_names))
 			.where(gle.is_cancelled == 0)
 		)
-		cash_query = _apply_company_filter(cash_query, gle, company)
+		cash_query = apply_company_filter(cash_query, gle, company)
 		cash_result = cash_query.run(as_dict=True)
 		cash_position = flt(cash_result[0].balance) if cash_result else 0
 
@@ -373,7 +362,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(acc.root_type == "Asset")
 		.where(gle.is_cancelled == 0)
 	)
-	asset_query = _apply_company_filter(asset_query, gle, company)
+	asset_query = apply_company_filter(asset_query, gle, company)
 	asset_result = asset_query.run(as_dict=True)
 	total_assets = flt(asset_result[0].total_assets) if asset_result else 0
 
@@ -388,7 +377,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(pe.posting_date >= from_date)
 		.where(pe.posting_date <= to_date)
 	)
-	cf_in_query = _apply_company_filter(cf_in_query, pe, company)
+	cf_in_query = apply_company_filter(cf_in_query, pe, company)
 	cf_inflow = cf_in_query.run(as_dict=True)
 	cash_inflow = flt(cf_inflow[0].total) if cf_inflow else 0
 
@@ -400,12 +389,12 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(pe.posting_date >= from_date)
 		.where(pe.posting_date <= to_date)
 	)
-	cf_out_query = _apply_company_filter(cf_out_query, pe, company)
+	cf_out_query = apply_company_filter(cf_out_query, pe, company)
 	cf_outflow = cf_out_query.run(as_dict=True)
 	cash_outflow = flt(cf_outflow[0].total) if cf_outflow else 0
 
 	# --- Budget Summary ---
-	budget_summary = _get_budget_summary(_primary(company))
+	budget_summary = _get_budget_summary(primary(company))
 
 	# --- Calculate KPIs ---
 	gross_margin_pct = flt((gross_profit / revenue) * 100, 1) if revenue else 0
@@ -440,7 +429,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(si.posting_date >= prior_from)
 		.where(si.posting_date <= prior_to)
 	)
-	prev_rev_query = _apply_company_filter(prev_rev_query, si, company)
+	prev_rev_query = apply_company_filter(prev_rev_query, si, company)
 	prev_rev_result = prev_rev_query.run(as_dict=True)
 	prev_revenue = flt(prev_rev_result[0].revenue) if prev_rev_result else 0
 
@@ -451,7 +440,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 		.where(pi.posting_date >= prior_from)
 		.where(pi.posting_date <= prior_to)
 	)
-	prev_cogs_query = _apply_company_filter(prev_cogs_query, pi, company)
+	prev_cogs_query = apply_company_filter(prev_cogs_query, pi, company)
 	prev_cogs_result = prev_cogs_query.run(as_dict=True)
 	prev_cogs = flt(prev_cogs_result[0].cogs) if prev_cogs_result else 0
 	prev_net_profit = prev_revenue - prev_cogs
@@ -567,7 +556,7 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 			series_name="KPI",
 		),
 	}
-	return build_currency_response(result, _primary(company))
+	return build_currency_response(result, primary(company))
 
 
 def _get_budget_summary(company):
@@ -686,7 +675,7 @@ def get_monthly_comparison(months=6, company=None):
 		.groupby(si_month)
 		.orderby(si_month)
 	)
-	rev_query = _apply_company_filter(rev_query, si, company)
+	rev_query = apply_company_filter(rev_query, si, company)
 	rev_data = rev_query.run(as_dict=True)
 
 	# Monthly expenses
@@ -703,7 +692,7 @@ def get_monthly_comparison(months=6, company=None):
 		.groupby(pi_month)
 		.orderby(pi_month)
 	)
-	exp_query = _apply_company_filter(exp_query, pi, company)
+	exp_query = apply_company_filter(exp_query, pi, company)
 	exp_data = exp_query.run(as_dict=True)
 
 	rev_map = {r.month: {"revenue": flt(r.revenue), "count": r.invoice_count} for r in rev_data}
@@ -764,4 +753,4 @@ def get_monthly_comparison(months=6, company=None):
 			chart_type="line",
 		),
 	}
-	return build_currency_response(result, _primary(company))
+	return build_currency_response(result, primary(company))

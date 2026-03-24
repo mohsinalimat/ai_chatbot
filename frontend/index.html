@@ -3,10 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chatbot</title>
+    <title>AI Chatbot - ERPNext Assistant</title>
+    <link rel="icon" type="image/png" href="/assets/ai_chatbot/frontend/favicon.png">
 </head>
 <body>
     <div id="app"></div>
+    <script>
+        window.csrf_token = "{{ csrf_token }}";
+        window.site_name = "{{ site_name }}";
+        if (!window.frappe) window.frappe = {};
+        frappe.boot = {{ boot }};
+    </script>
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>

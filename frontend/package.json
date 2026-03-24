@@ -12,7 +12,8 @@
   "scripts": {
     "dev": "vite",
     "serve": "vite preview",
-    "build": "vite build"
+    "build": "vite build --base=/assets/ai_chatbot/frontend/ && yarn copy-html-entry",
+    "copy-html-entry": "cp ../ai_chatbot/public/frontend/index.html ../ai_chatbot/www/ai-chatbot.html"
   },
   "dependencies": {
     "echarts": "^6.0.0",

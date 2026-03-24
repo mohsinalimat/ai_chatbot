@@ -55,6 +55,7 @@ jspm_packages/
 .aider*
 
 ai_chatbot/public/frontend
+ai_chatbot/www/ai-chatbot.html
 build
 yarn.lock
 package-lock.json

@@ -70,7 +70,17 @@ async function fetchAndApplyTheme() {
 }
 
 onMounted(() => {
-  // Apply initial theme from server-injected data-theme attribute
+  // Apply initial theme from boot data (injected via frappe.boot.desk_theme)
+  const bootTheme = window.frappe?.boot?.desk_theme
+  if (bootTheme) {
+    document.documentElement.setAttribute('data-theme-mode', bootTheme)
+    if (bootTheme === 'automatic') {
+      const resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      document.documentElement.setAttribute('data-theme', resolved)
+    } else {
+      document.documentElement.setAttribute('data-theme', bootTheme)
+    }
+  }
   applyTheme(detectTheme())
 
   // Watch for data-theme attribute changes (in case anything modifies it at runtime)

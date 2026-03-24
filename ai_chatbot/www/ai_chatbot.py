@@ -2,20 +2,32 @@
 # For license information, please see license.txt
 import frappe
 
+no_cache = 1
+
 
 def get_context(context):
-	"""Set context for AI Chatbot page"""
-	context.no_cache = 1
-
-	# Check if user is logged in
+	"""Set context for AI Chatbot page."""
 	if frappe.session.user == "Guest":
 		frappe.throw("Please login to access AI Chatbot", frappe.PermissionError)
 
-	# Pass site name to template (frappe.local is not directly accessible in Jinja2)
+	csrf_token = frappe.sessions.get_csrf_token()
+	frappe.db.commit()
+	context.csrf_token = csrf_token
 	context.site_name = frappe.local.site
-
-	# Get user's desk theme preference for dark mode support
-	desk_theme = frappe.db.get_value("User", frappe.session.user, "desk_theme") or "Light"
-	context.desk_theme = desk_theme.lower()
-
+	context.boot = get_boot()
 	return context
+
+
+def get_boot():
+	"""Build boot data for the AI Chatbot frontend."""
+	desk_theme = (
+		frappe.db.get_value("User", frappe.session.user, "desk_theme") or "Light"
+	)
+
+	return frappe._dict(
+		{
+			"site_name": frappe.local.site,
+			"csrf_token": frappe.sessions.get_csrf_token(),
+			"desk_theme": desk_theme.lower(),
+		}
+	)

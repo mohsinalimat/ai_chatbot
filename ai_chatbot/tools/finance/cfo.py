@@ -39,12 +39,7 @@ def _pnl_totals(company: str, from_date: str, to_date: str) -> dict:
 		from_date=from_date,
 		to_date=to_date,
 		periodicity="Yearly",
-		report_type="profit_and_loss",
 	)
-	# Remove report_template so the standard code path is used.
-	# FinancialReportEngine (template path) returns a 4-tuple without report_summary;
-	# the standard path returns a 6-tuple that includes report_summary.
-	filters.pop("report_template", None)
 
 	from erpnext.accounts.report.profit_and_loss_statement.profit_and_loss_statement import (
 		execute,
@@ -111,12 +106,7 @@ def _balance_sheet_totals(company: str, from_date: str, to_date: str) -> dict:
 		from_date=from_date,
 		to_date=to_date,
 		periodicity="Yearly",
-		report_type="balance_sheet",
 	)
-	# Remove report_template so the standard code path is used.
-	# FinancialReportEngine (template path) returns a 4-tuple without report_summary;
-	# the standard path returns a 6-tuple that includes report_summary.
-	filters.pop("report_template", None)
 
 	from erpnext.accounts.report.balance_sheet.balance_sheet import execute
 
@@ -649,11 +639,7 @@ def get_monthly_comparison(months=6, company=None):
 		from_date=start_date,
 		to_date=end_date,
 		periodicity="Monthly",
-		report_type="profit_and_loss",
 	)
-	# Use the standard code path (not FinancialReportEngine) so we get
-	# the expected row structure with is_group, parent_account, etc.
-	filters.pop("report_template", None)
 
 	from erpnext.accounts.report.profit_and_loss_statement.profit_and_loss_statement import (
 		execute,

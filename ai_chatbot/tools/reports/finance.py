@@ -468,7 +468,6 @@ def report_profit_and_loss(
 		periodicity=periodicity,
 		cost_center=cost_center,
 		project=project,
-		report_type="profit_and_loss",
 	)
 
 	from erpnext.accounts.report.profit_and_loss_statement.profit_and_loss_statement import (
@@ -538,7 +537,6 @@ def report_balance_sheet(
 		periodicity=periodicity,
 		cost_center=cost_center,
 		project=project,
-		report_type="balance_sheet",
 	)
 
 	from erpnext.accounts.report.balance_sheet.balance_sheet import execute
@@ -594,7 +592,6 @@ def report_cash_flow(
 		from_date=from_date,
 		to_date=to_date,
 		periodicity=periodicity,
-		report_type="cash_flow",
 	)
 
 	from erpnext.accounts.report.cash_flow.cash_flow import execute

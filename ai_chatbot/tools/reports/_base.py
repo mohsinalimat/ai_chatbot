@@ -8,7 +8,6 @@ Core helpers used by all report wrapper tools:
 - normalize_columns(): handles ERPNext's mixed column format
 - strip_columns_for_ai(): removes hidden/all-zero columns to save tokens
 - get_fiscal_year_name(): resolves fiscal year name string
-- resolve_report_template(): looks up standard financial report templates
 - build_financial_filters(): constructs the complex filter dict for P&L/BS/CF
 - erpnext_chart_to_echart(): converts ERPNext chart format to ECharts option
 - build_report_response(): assembles the final tool response dict
@@ -320,6 +319,64 @@ def _round_data(data: list[dict], precision: int = 2) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════
 
 
+# ── Report template resolution (reserved for future use) ──────────
+# When ERPNext's Financial Report Template and Account Category setup
+# is properly configured, the template-based FinancialReportEngine
+# code path can produce structured financial statements. Currently
+# disabled because:
+# 1. Account Category is a v17+ feature — may not be configured
+# 2. The template path returns a 4-tuple (no report_summary),
+#    while the standard path returns a 6-tuple (with report_summary)
+#    which we rely on for CFO dashboard KPIs
+#
+# To re-enable: uncomment the constants and function below, add
+# report_type parameter back to build_financial_filters(), and call
+# resolve_report_template(report_type) to set filters["report_template"].
+#
+# _REPORT_TYPE_MAP = {
+# 	"profit_and_loss": "Profit and Loss Statement",
+# 	"balance_sheet": "Balance Sheet",
+# 	"cash_flow": "Cash Flow",
+# }
+#
+# _TEMPLATE_FALLBACKS = {
+# 	"Profit and Loss Statement": "Default Profit and Loss Statement",
+# 	"Balance Sheet": "Default Balance Sheet",
+# 	"Cash Flow": "Default Cash Flow",
+# }
+#
+#
+# def resolve_report_template(report_type: str) -> str:
+# 	"""Resolve the Financial Report Template name for a given report type.
+#
+# 	Looks up the standard template from the DB. Falls back to hardcoded
+# 	default names if the DB lookup fails or returns nothing.
+#
+# 	Args:
+# 		report_type: One of "profit_and_loss", "balance_sheet", "cash_flow".
+#
+# 	Returns:
+# 		Financial Report Template name string, or empty string if not found.
+# 	"""
+# 	report_name = _REPORT_TYPE_MAP.get(report_type, "")
+# 	if not report_name:
+# 		return ""
+#
+# 	try:
+# 		templates = frappe.get_all(
+# 			"Financial Report Template",
+# 			filters={"report": report_name},
+# 			pluck="name",
+# 			limit=1,
+# 		)
+# 		if templates:
+# 			return templates[0]
+# 	except Exception:
+# 		pass
+#
+# 	return _TEMPLATE_FALLBACKS.get(report_name, "")
+
+
 def get_fiscal_year_name(company: str | None = None) -> str:
 	"""Get the fiscal year name string for the current date.
 
@@ -339,56 +396,6 @@ def get_fiscal_year_name(company: str | None = None) -> str:
 		return ""
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Financial report template helpers
-# ═══════════════════════════════════════════════════════════════════
-
-# Hardcoded fallback names matching the standard IFRS templates shipped with ERPNext
-_TEMPLATE_FALLBACKS = {
-	"profit_and_loss": "Standard Profit and Loss (IFRS)",
-	"balance_sheet": "Standard Balance Sheet (IFRS)",
-	"cash_flow": "Standard Cash Flow Statement (IFRS)",
-}
-
-# Maps report type to the report_type field value in Financial Report Template doctype
-_REPORT_TYPE_MAP = {
-	"profit_and_loss": "Profit and Loss Statement",
-	"balance_sheet": "Balance Sheet",
-	"cash_flow": "Cash Flow",
-}
-
-
-def resolve_report_template(report_type: str) -> str:
-	"""Look up the standard financial report template name.
-
-	Queries the Financial Report Template doctype for the standard IFRS template.
-	Falls back to hardcoded names if DB lookup fails.
-
-	Args:
-		report_type: One of "profit_and_loss", "balance_sheet", "cash_flow".
-
-	Returns:
-		Template name string.
-	"""
-	rt = _REPORT_TYPE_MAP.get(report_type)
-	if not rt:
-		return _TEMPLATE_FALLBACKS.get(report_type, "")
-
-	try:
-		template = frappe.db.get_value(
-			"Financial Report Template",
-			{"report_type": rt, "disabled": 0},
-			"name",
-			order_by="creation asc",
-		)
-		if template:
-			return template
-	except Exception:
-		pass
-
-	return _TEMPLATE_FALLBACKS.get(report_type, "")
-
-
 def build_financial_filters(
 	company: str,
 	from_date: str | None = None,
@@ -396,12 +403,13 @@ def build_financial_filters(
 	periodicity: str = "Yearly",
 	cost_center: str | None = None,
 	project: str | None = None,
-	report_type: str = "profit_and_loss",
 ) -> dict:
 	"""Build the complex filter dict required by P&L, Balance Sheet, Cash Flow reports.
 
-	These reports require specific filter keys like filter_based_on, period_start_date,
-	period_end_date, from_fiscal_year, to_fiscal_year, and report_template.
+	Uses the standard (non-template) code path which works on all ERPNext versions
+	and does not require Account Category or Financial Report Template setup.
+	The standard path returns a 6-tuple including report_summary, which the
+	template-based FinancialReportEngine path (4-tuple) omits.
 
 	Args:
 		company: Company name.
@@ -410,7 +418,6 @@ def build_financial_filters(
 		periodicity: One of "Monthly", "Quarterly", "Half-Yearly", "Yearly".
 		cost_center: Optional cost center filter.
 		project: Optional project filter.
-		report_type: One of "profit_and_loss", "balance_sheet", "cash_flow".
 
 	Returns:
 		Dict of filters ready for the report's execute() function.
@@ -423,7 +430,6 @@ def build_financial_filters(
 		to_date = to_date or fy_to
 
 	fy_name = get_fiscal_year_name(company)
-	template_name = resolve_report_template(report_type)
 
 	filters = {
 		"company": company,
@@ -433,7 +439,6 @@ def build_financial_filters(
 		"from_fiscal_year": fy_name,
 		"to_fiscal_year": fy_name,
 		"periodicity": periodicity,
-		"report_template": template_name,
 	}
 
 	if cost_center:

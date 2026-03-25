@@ -5,7 +5,7 @@
 **Framework:** Python backend on Frappe Framework, Vue 3 frontend (Vite + Tailwind CSS)
 **AI Providers:** OpenAI (GPT-4o, GPT-4-Turbo, GPT-3.5-Turbo), Anthropic Claude (Opus 4.5, Sonnet 4.5, Haiku 4.5), Google Gemini (2.5 Flash, 2.5 Pro)
 **Charts:** Apache ECharts
-**Business Intelligence Tools:** 46+
+**Business Intelligence Tools:** 70
 
 ---
 
@@ -37,7 +37,7 @@
 
 AI Chatbot is a Frappe framework application that provides a modern, real-time chat interface powered by large language models (OpenAI, Claude, Gemini) with deep integration into ERPNext business data. It allows users to query, analyze, and manipulate their ERP data through natural language conversation.
 
-The application ships 46+ business intelligence tools spanning sales, purchasing, inventory, finance, CRM, HRMS, and predictive analytics. Tools query ERPNext data via Frappe's ORM (frappe.qb and frappe.get_all), generate ECharts visualizations, and return structured results that the AI synthesizes into natural language responses.
+The application ships 70 business intelligence tools spanning sales, purchasing, inventory, finance, CRM, HRMS, and predictive analytics. Tools query ERPNext data via Frappe's ORM (frappe.qb and frappe.get_all) or by calling ERPNext's standard report `execute()` functions directly, generate ECharts visualizations, and return structured results that the AI synthesizes into natural language responses.
 
 Key capabilities:
 
@@ -90,26 +90,26 @@ ai_chatbot/                          # Python package (Frappe app backend)
 +-- tools/                           # Business intelligence tools
 |   +-- registry.py                  # Decorator-based tool registration
 |   +-- base.py                      # Backward-compatible BaseTool wrapper
+|   +-- common.py                    # Shared helpers (primary, etc.)
 |   +-- selling.py                   # Sales analytics (5 tools)
-|   +-- buying.py                    # Purchase analytics (4 tools)
+|   +-- buying.py                    # Purchase analytics (2 tools)
 |   +-- stock.py                     # Inventory management (4 tools)
-|   +-- account.py                   # Accounting tools (2 tools)
-|   +-- crm.py                       # CRM analytics (6 tools)
+|   +-- crm.py                       # CRM analytics (5 tools)
 |   +-- hrms.py                      # HRMS tools (6 tools)
 |   +-- session.py                   # Session management (2 tools)
-|   +-- consolidation.py             # Multi-company consolidation (1 tool)
 |   +-- idp.py                       # Document processing (3 tools)
-|   +-- finance/                     # Finance sub-modules (19 tools)
+|   +-- finance/                     # Finance sub-modules (8 custom tools)
 |   |   +-- analytics.py             #   Multi-dimensional summary
-|   |   +-- budget.py                #   Budget vs actual, variance
-|   |   +-- cash_flow.py             #   Cash flow statement, trend, bank balance
+|   |   +-- cash_flow.py             #   Payment Entry cash flow, bank balance
 |   |   +-- cfo.py                   #   CFO dashboard, financial overview, monthly comparison
-|   |   +-- gl_analytics.py          #   GL summary, trial balance, account statement
-|   |   +-- payables.py              #   Payable aging, top creditors
+|   |   +-- gl_analytics.py          #   GL summary with flexible grouping
 |   |   +-- profitability.py         #   Profitability by customer/item/territory
-|   |   +-- ratios.py                #   Liquidity, profitability, efficiency ratios
-|   |   +-- receivables.py           #   Receivable aging, top debtors
-|   |   +-- working_capital.py       #   Working capital summary, cash conversion cycle
+|   +-- reports/                     # ERPNext standard report wrappers (21 tools)
+|   |   +-- _base.py                 #   Report execution utilities
+|   |   +-- finance.py               #   14 financial report tools
+|   |   +-- sales.py                 #   2 sales register tools
+|   |   +-- purchase.py              #   2 purchase register tools
+|   |   +-- stock.py                 #   3 stock report tools
 |   +-- operations/                  # CRUD operations (9 tools)
 |   |   +-- create.py                #   Create lead, opportunity, todo
 |   |   +-- update.py                #   Update lead/opportunity status, update todo
@@ -251,16 +251,16 @@ frontend/                            # Vue 3 SPA source
 |  |  |  |                                              |
 |  |  |  |  +-- Tool Registry (registry.py) -----------+
 |  |  |  |  |   @register_tool decorator               |
-|  |  |  |  |   66 registered tool functions            |
+|  |  |  |  |   70 registered tool functions            |
 |  |  |  |  |   Category-based enable/disable           |
 |  |  |  |  |   DocType permission checks               |
 |  |  |  |  |   Plugin hook: ai_chatbot_tool_modules    |
 |  |  |  |  |                                           |
-|  |  |  |  |   selling (5)    buying (4)    stock (4)  |
-|  |  |  |  |   account (2)    crm (6)       hrms (6)  |
-|  |  |  |  |   finance/ (19)  operations/ (9)          |
-|  |  |  |  |   predictive/ (5) idp (3)                 |
-|  |  |  |  |   session (2)    consolidation (1)        |
+|  |  |  |  |   selling (7)    buying (4)    stock (7)  |
+|  |  |  |  |   crm (5)        hrms (6)     idp (3)    |
+|  |  |  |  |   finance/ (8)   reports/ (21)            |
+|  |  |  |  |   operations/ (9) predictive/ (5)         |
+|  |  |  |  |   session (2)                              |
 |  |  |  |  +------------------------------------------+
 |  |  |  |                                              |
 |  |  |  |  +-- Data Layer ----------------------------+
@@ -473,6 +473,7 @@ registry.execute_tool(tool_name, arguments)
        |         - frappe.get_all for list queries
        |         - data/analytics.py helpers (get_sum, get_grouped_sum, get_time_series)
        |         - data/grouping.py for multi-dimensional analysis
+       |         - ERPNext report execute() functions (report_* tools)
        |       Tool builds ECharts options:
        |         - data/charts.py (build_bar_chart, build_line_chart, etc.)
        |       Tool wraps response:
@@ -663,26 +664,28 @@ When building tool schemas for the AI:
 
 ### 4.4 Tool Categories and Complete Tool List
 
-**Selling (5 tools) -- category: `selling`, toggle: `enable_sales_tools`**
+**Selling (7 tools) -- category: `selling`, toggle: `enable_sales_tools`**
 
-| Tool Name                | Description                                      | DocTypes            |
-|--------------------------|--------------------------------------------------|---------------------|
-| get_sales_analytics      | Revenue, orders, and growth trends               | Sales Invoice       |
-| get_top_customers        | Top customers by revenue                         | Sales Invoice       |
-| get_sales_trend          | Monthly sales revenue trend                      | Sales Invoice       |
-| get_sales_by_territory   | Sales breakdown by territory/region              | Sales Invoice       |
-| get_sales_by_item_group  | Sales breakdown by item group/product category   | Sales Invoice       |
+| Tool Name                      | Description                                      | DocTypes            |
+|--------------------------------|--------------------------------------------------|---------------------|
+| get_sales_analytics            | Revenue, orders, and growth trends               | Sales Invoice       |
+| get_top_customers              | Top customers by revenue                         | Sales Invoice       |
+| get_transaction_trend          | Monthly transaction trend (sales/purchase)       | Sales Invoice       |
+| get_sales_by_territory         | Sales breakdown by territory/region              | Sales Invoice       |
+| get_by_item_group              | Transaction breakdown by item group              | Sales Invoice       |
+| report_sales_register          | ERPNext Sales Register with tax details          | Sales Invoice       |
+| report_item_wise_sales_register| ERPNext Item-wise Sales Register                 | Sales Invoice       |
 
 **Buying (4 tools) -- category: `buying`, toggle: `enable_purchase_tools`**
 
-| Tool Name                | Description                                      | DocTypes            |
-|--------------------------|--------------------------------------------------|---------------------|
-| get_purchase_analytics   | Purchase analytics and spending                  | Purchase Invoice    |
-| get_supplier_performance | Supplier performance analysis                    | Purchase Invoice    |
-| get_purchase_trend       | Monthly purchase spending trend                  | Purchase Invoice    |
-| get_purchase_by_item_group| Purchase breakdown by item group                | Purchase Invoice    |
+| Tool Name                          | Description                                  | DocTypes            |
+|------------------------------------|----------------------------------------------|---------------------|
+| get_purchase_analytics             | Purchase analytics and spending              | Purchase Invoice    |
+| get_supplier_performance           | Supplier performance analysis                | Purchase Invoice    |
+| report_purchase_register           | ERPNext Purchase Register with tax details   | Purchase Invoice    |
+| report_item_wise_purchase_register | ERPNext Item-wise Purchase Register          | Purchase Invoice    |
 
-**Inventory (4 tools) -- category: `inventory`, toggle: `enable_inventory_tools`**
+**Inventory (7 tools) -- category: `inventory`, toggle: `enable_inventory_tools`**
 
 | Tool Name                | Description                                      | DocTypes            |
 |--------------------------|--------------------------------------------------|---------------------|
@@ -690,52 +693,52 @@ When building tool schemas for the AI:
 | get_low_stock_items      | Items below reorder level                        | Bin                 |
 | get_stock_movement       | Stock ledger movement analysis                   | Stock Ledger Entry  |
 | get_stock_ageing         | Inventory ageing analysis                        | Stock Ledger Entry  |
+| report_stock_ledger      | ERPNext Stock Ledger (all stock movements)       | Stock Ledger Entry  |
+| report_stock_balance     | ERPNext Stock Balance (current snapshot)          | Stock Ledger Entry  |
+| report_stock_ageing      | ERPNext Stock Ageing (slow-moving items)         | Stock Ledger Entry  |
 
-**Accounts (2 tools) -- category: `finance`, toggle: `enable_finance_tools`**
-
-| Tool Name                | Description                                      | DocTypes            |
-|--------------------------|--------------------------------------------------|---------------------|
-| get_financial_summary    | P&L and balance sheet summary                    | GL Entry            |
-| get_cash_flow_analysis   | Cash flow analysis from GL entries               | GL Entry            |
-
-**Finance (19 tools) -- category: `finance`, toggle: `enable_finance_tools`**
+**Finance — Custom Analytics (8 tools) -- category: `finance`, toggle: `enable_finance_tools`**
 
 | Tool Name                     | Sub-module       | Description                                     |
 |-------------------------------|------------------|-------------------------------------------------|
-| get_multidimensional_summary  | analytics.py     | Multi-dimensional grouped aggregation            |
-| get_budget_vs_actual          | budget.py        | Budget vs actual comparison                      |
-| get_budget_variance           | budget.py        | Budget variance analysis                         |
-| get_cash_flow_statement       | cash_flow.py     | Cash flow statement (operating/investing/financing)|
-| get_cash_flow_trend           | cash_flow.py     | Monthly cash flow trend                          |
-| get_bank_balance              | cash_flow.py     | Current bank/cash balances                       |
-| get_cfo_dashboard             | cfo.py           | CFO-level executive dashboard                    |
-| get_financial_overview        | cfo.py           | Financial overview with KPIs                     |
+| get_financial_overview        | cfo.py           | Financial overview with KPIs (from P&L/BS/AR/AP reports) |
+| get_cfo_dashboard             | cfo.py           | CFO-level executive dashboard with BI cards     |
 | get_monthly_comparison        | cfo.py           | Month-over-month financial comparison            |
-| get_gl_summary                | gl_analytics.py  | General ledger summary by account                |
-| get_trial_balance             | gl_analytics.py  | Trial balance report                             |
-| get_account_statement         | gl_analytics.py  | Account statement with running balance           |
-| get_payable_aging             | payables.py      | Accounts payable aging (0-30, 31-60, 61-90, 90+)|
-| get_top_creditors             | payables.py      | Top creditors by outstanding amount              |
-| get_profitability_by_customer | profitability.py | Customer profitability analysis                  |
-| get_profitability_by_item     | profitability.py | Item/product profitability analysis              |
-| get_profitability_by_territory| profitability.py | Territory profitability analysis                 |
-| get_liquidity_ratios          | ratios.py        | Current ratio, quick ratio, cash ratio           |
-| get_profitability_ratios      | ratios.py        | Gross/net/operating margin, ROA, ROE             |
-| get_efficiency_ratios         | ratios.py        | DSO, DPO, inventory turnover, asset turnover     |
-| get_receivable_aging          | receivables.py   | Accounts receivable aging                        |
-| get_top_debtors               | receivables.py   | Top debtors by outstanding amount                |
-| get_working_capital_summary   | working_capital.py| Working capital components analysis             |
-| get_cash_conversion_cycle     | working_capital.py| Cash conversion cycle (DIO + DSO - DPO)        |
+| get_cash_flow                 | cash_flow.py     | Payment Entry-based cash flow analysis/trend     |
+| get_bank_balance              | cash_flow.py     | Current bank/cash balances from GL               |
+| get_gl_summary                | gl_analytics.py  | GL summary with flexible grouping                |
+| get_profitability             | profitability.py | Profitability by customer/item/territory         |
+| get_multidimensional_summary  | analytics.py     | Multi-dimensional grouped aggregation            |
 
-**CRM (6 tools) -- category: `crm`, toggle: `enable_crm_tools`**
+**Finance — ERPNext Standard Reports (14 tools) -- category: `finance`, toggle: `enable_finance_tools`**
+
+These tools are thin wrappers around ERPNext's standard report `execute()` functions (Phase 12B), sourcing data directly from ERPNext reports for consistency with the numbers shown in the ERPNext UI.
+
+| Tool Name                                | Sub-module   | Description                                    |
+|------------------------------------------|--------------|------------------------------------------------|
+| report_general_ledger                    | finance.py   | General Ledger with all GL Entry details       |
+| report_accounts_receivable               | finance.py   | Invoice-wise AR with aging (0-30, 31-60, 61-90, 90+) |
+| report_accounts_receivable_summary       | finance.py   | AR summary per customer with aging buckets     |
+| report_accounts_payable                  | finance.py   | Invoice-wise AP with aging                     |
+| report_accounts_payable_summary          | finance.py   | AP summary per supplier with aging buckets     |
+| report_trial_balance                     | finance.py   | Account balances: opening/debit/credit/closing |
+| report_profit_and_loss                   | finance.py   | P&L statement with periodic breakdown          |
+| report_balance_sheet                     | finance.py   | Assets, liabilities, equity at point in time   |
+| report_cash_flow                         | finance.py   | GL-based cash flow (operating/investing/financing) |
+| report_consolidated_financial_statement  | finance.py   | Consolidated P&L/BS/CF for group companies     |
+| report_consolidated_trial_balance        | finance.py   | Consolidated trial balance across companies    |
+| report_account_balance                   | finance.py   | Group account balances on a date               |
+| report_financial_ratios                  | finance.py   | Liquidity, solvency, and turnover ratios       |
+| report_budget_variance                   | finance.py   | Budget vs actual by cost center/dept/project   |
+
+**CRM (5 tools) -- category: `crm`, toggle: `enable_crm_tools`**
 
 | Tool Name                | Description                                      | DocTypes            |
 |--------------------------|--------------------------------------------------|---------------------|
 | get_lead_statistics      | Lead count, status breakdown, conversion metrics  | Lead                |
-| get_lead_source_analysis | Lead analysis by source                          | Lead                |
+| get_opportunity_analytics| Opportunity pipeline with stages and values       | Opportunity         |
 | get_lead_conversion_rate | Lead to opportunity conversion rate              | Lead                |
-| get_opportunity_pipeline | Active opportunity pipeline with values          | Opportunity         |
-| get_opportunity_by_stage | Opportunities grouped by sales stage             | Opportunity         |
+| get_lead_source_analysis | Lead analysis by source/campaign                 | Lead                |
 | get_sales_funnel         | Sales funnel from leads to orders                | Lead, Opportunity, Sales Order |
 
 **HRMS (6 tools) -- category: `hrms`, toggle: `enable_hrms_tools`**
@@ -787,12 +790,6 @@ When building tool schemas for the AI:
 |--------------------------|--------------------------------------------------|
 | set_include_subsidiaries | Toggle subsidiary data inclusion for the session |
 | set_target_currency      | Set display currency for the session             |
-
-**Consolidation (1 tool) -- always enabled**
-
-| Tool Name                | Description                                      |
-|--------------------------|--------------------------------------------------|
-| get_consolidated_report  | Cross-company consolidated report                |
 
 ### 4.5 Multi-Round Tool Calls
 

@@ -27,6 +27,8 @@ Output types:
 | Show sales for @company Acme Corp in @period Last Quarter | table | Filtered sales data scoped to specified company and period |
 | Who are our top 5 customers by order count? | table | Ranked list of customers sorted by number of sales orders placed |
 | Show monthly sales trend for last 6 months | chart | Line chart with six data points showing recent revenue trajectory |
+| Show sales register for this month | table | All sales transactions with tax details from ERPNext Sales Register |
+| Show item-wise sales register for [Customer] | table | Item-level sales details from ERPNext Item-wise Sales Register |
 
 ---
 
@@ -34,28 +36,29 @@ Output types:
 
 | Prompt | Output | Expected Result |
 |--------|--------|-----------------|
-| Give me a financial overview | chart | Revenue, COGS, gross profit, net profit, cash position, AR/AP with bar chart |
-| Show me the CFO dashboard | mixed | Financial highlights, KPIs, cash flow, aging summaries, budget variance |
-| Show profit and loss summary for this fiscal year | table | Income, expense, and net profit/loss grouped by account hierarchy |
-| What are the current liquidity ratios? | number | Current ratio, quick ratio with component breakdown |
-| Show me profitability ratios for this fiscal year | number | Gross margin %, net margin %, ROA % with revenue and profit figures |
-| What are the efficiency ratios? | number | Inventory turnover, DSO, DPO with component breakdown |
-| Show accounts receivable aging | chart | Aging buckets (0-30, 31-60, 61-90, 90+ days) with ECharts bar chart |
-| Who are the top 10 debtors? | chart | Customers with outstanding amounts and horizontal bar chart |
-| Show accounts payable aging | chart | Supplier aging buckets with ECharts bar chart |
-| What is our working capital position? | number | Receivables, inventory, current assets, payables, net working capital |
-| What is the cash conversion cycle? | number | DSO, DIO, DPO, and CCC = DSO + DIO - DPO |
-| Show budget vs actual for this fiscal year | chart | Accounts with budget, actual, variance and multi-series bar chart |
-| Show monthly budget variance | chart | Monthly breakdown with ECharts multi-series line chart |
-| Generate a cash flow statement | table | Operating/financing activities with inflow, outflow, net cash flow |
-| Show cash flow trend for the last 12 months | chart | Multi-series line chart (inflow, outflow, net) |
-| What are the current bank balances? | number | Bank/cash accounts with individual and total balances |
+| Give me a financial overview | chart | Revenue, total expenses, net profit, cash position, AR/AP with bar chart and BI cards |
+| Show me the CFO dashboard | mixed | Financial highlights, KPIs (net margin, gross profit ratio, current/quick ratio), cash flow, aging summaries |
+| Show profit and loss for this fiscal year | table | Income, expense, and net profit/loss from ERPNext P&L report |
+| Show monthly P&L breakdown | table | Monthly columns showing income and expenses from ERPNext P&L report |
+| Show the balance sheet | table | Assets, liabilities, and equity from ERPNext Balance Sheet report |
+| Show the trial balance | table | All accounts with opening, debit, credit, and closing balances |
+| Show the general ledger for our cash account | table | Detailed GL entries with posting date, party, debit/credit, running balance |
+| Show accounts receivable aging | table | Invoice-wise outstanding from ERPNext AR report with aging buckets (0-30, 31-60, 61-90, 90+) |
+| Show accounts receivable summary | table | Total outstanding per customer from ERPNext AR Summary report |
+| Show accounts payable aging | table | Invoice-wise outstanding to suppliers from ERPNext AP report |
+| Show accounts payable summary | table | Total outstanding per supplier from ERPNext AP Summary report |
+| What are the financial ratios? | table | Liquidity, solvency, and turnover ratios from ERPNext Financial Ratios report |
+| Show budget vs actual for this fiscal year | table | Budget, actual, and variance from ERPNext Budget Variance report |
+| Show cash flow statement | table | Operating, investing, and financing activities from ERPNext Cash Flow report |
+| Show cash flow trend for the last 12 months | chart | Multi-series line chart (inflow, outflow, net) from Payment Entry data |
+| What are the current bank balances? | number | Bank/cash accounts with individual and total balances from GL |
 | Show month-over-month comparison for the last 3 months | chart | Revenue, expenses, net profit with MoM variance and line chart |
-| Show expense breakdown by @cost_center | chart | Expenses filtered by the specified cost center |
-| Show consolidated revenue including subsidiaries | number | Aggregated revenue from parent + all child companies |
-| Show CFO dashboard with subsidiary data | mixed | KPIs, cash flow, aging consolidated across all group companies |
-| Show receivable aging across all group companies | chart | Outstanding invoices from parent + subsidiaries with aging buckets |
-| Show financial ratios for the group | number | Liquidity, profitability, efficiency ratios from consolidated data |
+| Show account balances by root type | table | Group account balances from ERPNext Account Balance report |
+| Show consolidated P&L for the group | table | Consolidated P&L across all subsidiary companies |
+| Show consolidated trial balance | table | Consolidated trial balance across selected companies |
+| Show GL summary by account type | chart | GL summary grouped by account type (Bank, Cash, Receivable, etc.) |
+| Which products are most profitable? | chart | Items with revenue, cost, margin % from profitability analysis |
+| Show profitability breakdown by territory | chart | Territory-wise margin data with pie chart |
 
 ---
 
@@ -101,10 +104,12 @@ Output types:
 | Show low stock items below reorder level | table | Items where current stock is below configured reorder level |
 | Top 10 items by stock quantity | table | Items ranked by quantity on hand across all warehouses |
 | Show stock movement for the last 30 days | chart | In/out movements with multi-series bar chart |
-| Show stock ageing report | chart | Items with age in days, aging buckets (0-30, 31-60, 61-90, 90+) with bar chart |
-| Show stock balance for @item in @warehouse | table | Filtered stock balance for specific item and warehouse |
+| Show stock ageing report | table | Items with age in days from ERPNext Stock Ageing report |
+| Show stock balance for @item in @warehouse | table | Filtered stock balance from ERPNext Stock Balance report |
 | Show warehouse-wise stock summary | table | Stock quantities and values broken down by warehouse |
 | Which items are running low? | table | Items approaching or below reorder level with current quantities |
+| Show stock ledger for [Item Code] | table | Detailed inward/outward transactions from ERPNext Stock Ledger report |
+| Show current stock balance by item group | table | Inventory snapshot with quantities and values from ERPNext Stock Balance report |
 
 ---
 
@@ -117,7 +122,8 @@ Output types:
 | What is the total purchase amount this quarter? | number | Aggregate purchase value for the current fiscal quarter |
 | Show the purchase trend for the last 12 months | chart | Line chart showing monthly purchase amounts over time |
 | Break down purchases by item group | chart | Bar chart of purchase spend distributed across item groups |
-| Show overdue purchase orders | table | Purchase orders past their expected delivery date |
+| Show purchase register for this quarter | table | All purchase transactions with tax details from ERPNext Purchase Register |
+| Show item-wise purchase register for [Supplier] | table | Item-level purchase details from ERPNext Item-wise Purchase Register |
 | Compare purchase amounts: this quarter vs last quarter | table | Side-by-side quarterly comparison with variance |
 
 ---
@@ -166,10 +172,11 @@ Notes on Predictive Analytics:
 
 | Prompt | Output | Expected Result |
 |--------|--------|-----------------|
-| Show consolidated sales across all companies | number | Aggregated sales from parent and all subsidiary companies |
+| Show consolidated P&L including subsidiaries | table | Consolidated P&L from ERPNext Consolidated Financial Statement report |
+| Show consolidated balance sheet for the group | table | Consolidated Balance Sheet across all subsidiary companies |
+| Show consolidated trial balance | table | Trial balance across selected companies from ERPNext report |
 | @company Tara Technologies show sales this quarter | table | Sales data scoped to the specified company only |
 | Include subsidiaries in the sales report | mixed | Toggles subsidiary inclusion for all subsequent queries in the session |
-| Show revenue breakdown by subsidiary | table | Revenue figures for each child company under the parent |
 | @company Tara Technologies @period This Quarter show P&L | table | Profit and loss scoped to a specific company and time period |
 | Compare sales across companies this fiscal year | table | Company-wise sales comparison with totals |
 

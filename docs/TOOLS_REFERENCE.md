@@ -1,12 +1,12 @@
 # AI Chatbot — Tools Reference
 
-Complete reference for all 80 registered business intelligence tools. Each tool is callable by the AI through natural language prompts.
+Complete reference for all 70 registered business intelligence tools. Each tool is callable by the AI through natural language prompts.
 
 All parameters are optional unless marked **(required)**. Date parameters default to the current fiscal year. Company defaults to the user's default company.
 
 ---
 
-## CRM (6 tools)
+## CRM (5 tools)
 
 ### get_lead_statistics
 Get statistics about leads including count, status breakdown, and conversion rates.
@@ -17,7 +17,7 @@ Get statistics about leads including count, status breakdown, and conversion rat
 | to_date | string | End date (YYYY-MM-DD) |
 | company | string | Company name |
 
-### get_opportunity_pipeline
+### get_opportunity_analytics
 Get sales opportunity pipeline with stages and values.
 
 | Parameter | Type | Description |
@@ -52,19 +52,9 @@ Get sales funnel showing conversion from leads to opportunities to quotations to
 | to_date | string | End date (YYYY-MM-DD) |
 | company | string | Company name |
 
-### get_opportunity_by_stage
-Get opportunities grouped by sales stage with total value and count per stage.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| from_date | string | Start date (YYYY-MM-DD) |
-| to_date | string | End date (YYYY-MM-DD) |
-| status | string | Filter by opportunity status |
-| company | string | Company name |
-
 ---
 
-## Sales / Selling (5 tools)
+## Sales / Selling (7 tools)
 
 ### get_sales_analytics
 Get sales analytics including revenue, orders, and growth trends.
@@ -86,12 +76,13 @@ Get top customers by revenue.
 | to_date | string | End date (YYYY-MM-DD) |
 | company | string | Company name |
 
-### get_sales_trend
-Get monthly sales revenue trend over time.
+### get_transaction_trend
+Get monthly transaction trend for sales or purchases over time.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | months | integer | Number of months to show (default 12) |
+| transaction_type | string | 'sales' or 'purchase' (default: sales) |
 | company | string | Company name |
 
 ### get_sales_by_territory
@@ -103,15 +94,39 @@ Get sales breakdown by territory/region.
 | to_date | string | End date (YYYY-MM-DD) |
 | company | string | Company name |
 
-### get_sales_by_item_group
-Get sales breakdown by item group/product category.
+### get_by_item_group
+Get transaction breakdown by item group/product category (sales or purchase).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | from_date | string | Start date (YYYY-MM-DD) |
 | to_date | string | End date (YYYY-MM-DD) |
+| transaction_type | string | 'sales' or 'purchase' (default: sales) |
 | limit | integer | Number of item groups to return (default 10) |
 | company | string | Company name |
+
+### report_sales_register
+Run ERPNext Sales Register — shows all sales transactions for a period with invoiced amount and tax details. Each tax type gets a separate column.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| customer | string | Filter by customer name |
+| customer_group | string | Filter by customer group |
+
+### report_item_wise_sales_register
+Run ERPNext Item-wise Sales Register — shows all sales transactions broken down by item with rate, quantity, amount, and tax details.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| customer | string | Filter by customer name |
+| item_code | string | Filter by specific item code |
+| item_group | string | Filter by item group |
 
 ---
 
@@ -134,59 +149,44 @@ Analyze supplier performance metrics.
 | supplier | string | Supplier name |
 | company | string | Company name |
 
-### get_purchase_trend
-Get monthly purchase spending trend over time.
+### report_purchase_register
+Run ERPNext Purchase Register — shows all purchase transactions for a period with invoiced amount and tax details. Each tax type gets a separate column.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| months | integer | Number of months to show (default 12) |
 | company | string | Company name |
-
-### get_purchase_by_item_group
-Get purchase breakdown by item group/product category.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
 | from_date | string | Start date (YYYY-MM-DD) |
 | to_date | string | End date (YYYY-MM-DD) |
-| limit | integer | Number of item groups to return (default 10) |
+| supplier | string | Filter by supplier name |
+| supplier_group | string | Filter by supplier group |
+
+### report_item_wise_purchase_register
+Run ERPNext Item-wise Purchase Register — shows all purchase transactions broken down by item with rate, quantity, amount, and tax details.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
 | company | string | Company name |
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| supplier | string | Filter by supplier name |
+| item_code | string | Filter by specific item code |
+| item_group | string | Filter by item group |
 
 ---
 
-## Finance — General (5 tools)
-
-### get_financial_summary
-Get financial summary including revenue, expenses, and profit for a period.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| from_date | string | Start date (YYYY-MM-DD) |
-| to_date | string | End date (YYYY-MM-DD) |
-| company | string | Company name |
-
-### get_cash_flow_analysis
-Analyze cash flow patterns and trends over a period.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| months | integer | Number of months to analyze (default 6) |
-| company | string | Company name |
-
-### get_multidimensional_summary
-Generate a multi-dimensional summary grouped by any combination of dimensions and time periods. Supports built-in dimensions (company, territory, customer_group, customer, item_group, cost_center, department) and any custom Accounting Dimensions.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| metric | string | What to measure: revenue, expenses, profit, orders (default: revenue) |
-| group_by | array | Dimensions to group by, in order (max 3). E.g. ["territory", "customer_group"] |
-| period | string | Time grouping: monthly, quarterly, yearly (default: quarterly) |
-| from_date | string | Start date (YYYY-MM-DD) |
-| to_date | string | End date (YYYY-MM-DD) |
-| company | string | Company name |
+## Finance — Custom Analytics (8 tools)
 
 ### get_financial_overview
-High-level financial overview with key KPIs: revenue, COGS, gross profit, net profit, cash position, AR, and AP.
+High-level financial overview with key KPIs sourced from ERPNext's P&L, Balance Sheet, AR, and AP reports: revenue, total expenses, net profit, cash position, receivables, and payables. Returns BI metric cards and a bar chart.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| company | string | Company name |
+
+### get_cfo_dashboard
+Comprehensive CFO dashboard with BI metric cards (Revenue, Net Profit, Cash, AR, AP with YoY comparisons), financial highlights, KPIs (net margin, gross profit ratio, current ratio, quick ratio from ERPNext Financial Ratios report), cash flow summary, receivables/payables aging, and balance sheet snapshot.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -202,25 +202,24 @@ Month-over-month comparison of revenue, expenses, and net profit with variance t
 | months | integer | Number of recent months to compare (default 6, max 12) |
 | company | string | Company name |
 
----
-
-## Finance — CFO Dashboard (1 tool)
-
-### get_cfo_dashboard
-Comprehensive CFO dashboard with BI metric cards (Revenue, Net Profit, Cash, AR, AP with YoY comparisons), financial highlights, KPIs (margins, ratios, efficiency metrics), cash flow summary, receivables/payables aging, budget variance, and balance sheet snapshot.
+### get_cash_flow
+Payment Entry-based cash flow analysis with monthly trend. Shows inflow, outflow, and net cash flow by payment type.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| from_date | string | Start date (YYYY-MM-DD) |
-| to_date | string | End date (YYYY-MM-DD) |
+| months | integer | Number of months to analyze (default 12) |
 | company | string | Company name |
 
----
+### get_bank_balance
+Current bank and cash account balances from General Ledger.
 
-## Finance — General Ledger (3 tools)
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| account | string | Specific bank or cash account name |
+| company | string | Company name |
 
 ### get_gl_summary
-General Ledger summary with flexible grouping. Useful for cash/bank position, receivables, payables, and income/expense breakdowns.
+General Ledger summary with flexible grouping by root type, account type, party type, voucher type, or account name. Uses GL entries for authoritative accounting data.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -233,254 +232,181 @@ General Ledger summary with flexible grouping. Useful for cash/bank position, re
 | to_date | string | End date (YYYY-MM-DD) |
 | company | string | Company name |
 
-### get_trial_balance
-Trial balance showing opening balance, period debit/credit, and closing balance for all accounts, grouped by root type with subtotals.
+### get_profitability
+Profitability analysis by customer, item, or territory with revenue, cost, and margin calculations.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
+| analysis_type | string | 'customer', 'item', or 'territory' (default: customer) |
 | from_date | string | Start date (YYYY-MM-DD) |
 | to_date | string | End date (YYYY-MM-DD) |
-| root_type | string | Filter: Asset, Liability, Equity, Income, Expense |
+| limit | integer | Number of results to return (default 10) |
 | company | string | Company name |
 
-### get_account_statement
-Detailed account statement showing all GL transactions with date, voucher, party, debit, credit, and running balance (bank statement view).
+### get_multidimensional_summary
+Generate a multi-dimensional summary grouped by any combination of dimensions and time periods. Supports built-in dimensions (company, territory, customer_group, customer, item_group, cost_center, department) and any custom Accounting Dimensions.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| account | string | **(required)** Account name (e.g. 'Cash - TC', 'Debtors - TC') |
+| metric | string | What to measure: revenue, expenses, profit, orders (default: revenue) |
+| group_by | array | Dimensions to group by, in order (max 3). E.g. ["territory", "customer_group"] |
+| period | string | Time grouping: monthly, quarterly, yearly (default: quarterly) |
 | from_date | string | Start date (YYYY-MM-DD) |
 | to_date | string | End date (YYYY-MM-DD) |
-| party_type | string | Filter: Customer, Supplier |
+| company | string | Company name |
+
+---
+
+## Finance — ERPNext Standard Reports (14 tools)
+
+These tools are thin wrappers around ERPNext's standard report `execute()` functions (Phase 12B). They source data directly from ERPNext reports for consistency with the numbers shown in the ERPNext UI.
+
+### report_general_ledger
+Run ERPNext General Ledger report — a detailed view of all accounting transactions posted to each account. Shows posting date, account, party, debit, credit, and running balance for every GL Entry.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| account | string | Filter by specific account name (e.g. 'Cash - TC', 'Debtors - TC') |
+| party_type | string | Filter by party type: Customer, Supplier, Employee |
 | party | string | Filter by specific party name |
-| company | string | Company name |
 
----
-
-## Finance — Budget (2 tools)
-
-### get_budget_vs_actual
-Compare budgeted amounts vs actual spending by account for a fiscal year.
+### report_accounts_receivable
+Run ERPNext Accounts Receivable report — tracks invoice-wise outstanding amounts from Customers with aging analysis (0-30, 31-60, 61-90, 90+ days).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
+| company | string | Company name |
+| report_date | string | Report date (YYYY-MM-DD, default: today) |
+| customer | string | Filter by specific customer name |
+
+### report_accounts_receivable_summary
+Run ERPNext Accounts Receivable Summary — shows total outstanding amount per Customer with aging buckets (0-30, 31-60, 61-90, 90+ days).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| report_date | string | Report date (YYYY-MM-DD, default: today) |
+| customer | string | Filter by specific customer name |
+
+### report_accounts_payable
+Run ERPNext Accounts Payable report — tracks invoice-wise outstanding amounts owed to Suppliers with aging analysis (0-30, 31-60, 61-90, 90+ days).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| report_date | string | Report date (YYYY-MM-DD, default: today) |
+| supplier | string | Filter by specific supplier name |
+
+### report_accounts_payable_summary
+Run ERPNext Accounts Payable Summary — shows total outstanding amount per Supplier with aging buckets (0-30, 31-60, 61-90, 90+ days).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| report_date | string | Report date (YYYY-MM-DD, default: today) |
+| supplier | string | Filter by specific supplier name |
+
+### report_trial_balance
+Run ERPNext Trial Balance report — lists account balances for all accounts (Ledger and Group) for a reporting period. Shows opening balance, period debit/credit, and closing balance.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
 | fiscal_year | string | Fiscal year name (e.g. '2025-2026') |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-| company | string | Company name |
-
-### get_budget_variance
-Detailed budget variance analysis with monthly breakdown for a specific account.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| fiscal_year | string | Fiscal year name |
-| account | string | Filter by specific account |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-| company | string | Company name |
-
----
-
-## Finance — Cash Flow (3 tools)
-
-### get_cash_flow_statement
-Structured cash flow statement with operating, investing, and financing activities.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
 | from_date | string | Start date (YYYY-MM-DD) |
 | to_date | string | End date (YYYY-MM-DD) |
-| company | string | Company name |
 | cost_center | string | Filter by cost center |
-| department | string | Filter by department |
 | project | string | Filter by project |
 
-### get_cash_flow_trend
-Monthly cash flow trend showing inflow, outflow, and net cash flow over time.
+### report_profit_and_loss
+Run ERPNext Profit and Loss Statement — summarizes all revenues and expenses for a period, showing net profit/loss. Supports monthly, quarterly, half-yearly, or yearly periodicity.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| months | integer | Number of months to analyze (default 12) |
 | company | string | Company name |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-
-### get_bank_balance
-Current bank and cash account balances.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| account | string | Specific bank or cash account name |
-| company | string | Company name |
-
----
-
-## Finance — Receivables (2 tools)
-
-### get_receivable_aging
-Accounts receivable aging analysis with buckets (0-30, 31-60, 61-90, 90+ days overdue).
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| ageing_based_on | string | Aging basis: Due Date or Posting Date (default: Due Date) |
-| customer | string | Filter by customer name |
-| company | string | Company name |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-
-### get_top_debtors
-Top customers with the highest outstanding receivables.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| limit | integer | Number of debtors to return (default 10) |
-| company | string | Company name |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-
----
-
-## Finance — Payables (2 tools)
-
-### get_payable_aging
-Accounts payable aging analysis with buckets (0-30, 31-60, 61-90, 90+ days overdue).
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| ageing_based_on | string | Aging basis: Due Date or Posting Date (default: Due Date) |
-| supplier | string | Filter by supplier name |
-| company | string | Company name |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-
-### get_top_creditors
-Top suppliers with the highest outstanding payables.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| limit | integer | Number of creditors to return (default 10) |
-| company | string | Company name |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-
----
-
-## Finance — Profitability (3 tools)
-
-### get_profitability_by_customer
-Profitability by customer showing revenue, cost, and profit margin.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
 | from_date | string | Start date (YYYY-MM-DD) |
 | to_date | string | End date (YYYY-MM-DD) |
-| limit | integer | Number of customers to return (default 10) |
-| company | string | Company name |
+| periodicity | string | Period grouping: Monthly, Quarterly, Half-Yearly, Yearly (default: Yearly) |
 | cost_center | string | Filter by cost center |
-| department | string | Filter by department |
 | project | string | Filter by project |
 
-### get_profitability_by_item
-Profitability by item/product showing revenue, cost, and profit margin.
+### report_balance_sheet
+Run ERPNext Balance Sheet — states assets, liabilities, and equity at a particular point in time. Can run across multiple periods to compare values.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
+| company | string | Company name |
 | from_date | string | Start date (YYYY-MM-DD) |
 | to_date | string | End date (YYYY-MM-DD) |
-| limit | integer | Number of items to return (default 10) |
-| company | string | Company name |
+| periodicity | string | Period grouping: Monthly, Quarterly, Half-Yearly, Yearly (default: Yearly) |
 | cost_center | string | Filter by cost center |
-| department | string | Filter by department |
 | project | string | Filter by project |
 
-### get_profitability_by_territory
-Profitability by territory/region showing revenue, cost, and margin.
+### report_cash_flow
+Run ERPNext Cash Flow Statement — shows incoming and outgoing cash based on GL entries. Shows operating, investing, and financing activities.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
+| company | string | Company name |
 | from_date | string | Start date (YYYY-MM-DD) |
 | to_date | string | End date (YYYY-MM-DD) |
-| company | string | Company name |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
+| periodicity | string | Period grouping: Monthly, Quarterly, Half-Yearly, Yearly (default: Yearly) |
 
----
-
-## Finance — Ratios (3 tools)
-
-### get_liquidity_ratios
-Calculate liquidity ratios: current ratio and quick ratio.
+### report_consolidated_financial_statement
+Run ERPNext Consolidated Financial Statement — shows a consolidated view of Balance Sheet, Profit and Loss, or Cash Flow for a group company by merging subsidiary financial statements.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| company | string | Company name |
-
-### get_profitability_ratios
-Calculate profitability ratios: gross margin, net margin, and return on assets (ROA).
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| from_date | string | Start date (YYYY-MM-DD) |
-| to_date | string | End date (YYYY-MM-DD) |
-| company | string | Company name |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-
-### get_efficiency_ratios
-Calculate efficiency ratios: inventory turnover, receivable days (DSO), and payable days (DPO).
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| from_date | string | Start date (YYYY-MM-DD) |
-| to_date | string | End date (YYYY-MM-DD) |
-| company | string | Company name |
-| cost_center | string | Filter by cost center |
-| department | string | Filter by department |
-| project | string | Filter by project |
-
----
-
-## Finance — Working Capital (2 tools)
-
-### get_working_capital_summary
-Working capital summary: receivables, payables, inventory, and net working capital.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| company | string | Company name |
-
-### get_cash_conversion_cycle
-Calculate the cash conversion cycle (CCC = DSO + DIO - DPO) for a period.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| from_date | string | Start date (YYYY-MM-DD) |
-| to_date | string | End date (YYYY-MM-DD) |
-| company | string | Company name |
-
----
-
-## Finance — Consolidation (1 tool)
-
-### get_consolidated_report
-Run any analytics tool across a parent company and all its subsidiaries, then consolidate the results. Pass the name of the tool (e.g. 'get_sales_analytics') and its parameters.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| tool_name | string | **(required)** Name of the tool to run across companies |
-| tool_params | object | Parameters to pass to the tool (do NOT include 'company') |
-| target_currency | string | Currency to display results in (defaults to parent company's currency) |
 | company | string | Parent company name |
+| report | string | Report type: 'Profit and Loss Statement', 'Balance Sheet', or 'Cash Flow' (default: Profit and Loss Statement) |
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| periodicity | string | Period grouping: Monthly, Quarterly, Half-Yearly, Yearly (default: Yearly) |
+| presentation_currency | string | Currency for the report (e.g. 'USD') |
+
+### report_consolidated_trial_balance
+Run ERPNext Consolidated Trial Balance — shows a consolidated view of trial balance across selected companies.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Parent company name (or comma-separated list) |
+| fiscal_year | string | Fiscal year name (e.g. '2025-2026') |
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| presentation_currency | string | Currency for the report (e.g. 'USD') |
+
+### report_account_balance
+Run ERPNext Account Balance report — shows group account balances on a specific date. Useful for a quick snapshot by root type or account type.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| report_date | string | Report date (YYYY-MM-DD, default: today) |
+| root_type | string | Filter: Asset, Liability, Equity, Income, Expense |
+| account_type | string | Filter: Bank, Cash, Receivable, Payable, etc. |
+
+### report_financial_ratios
+Run ERPNext Financial Ratios report — calculates key financial ratios across periods. Includes Liquidity Ratios (Current Ratio, Quick Ratio), Solvency Ratios (Debt Equity, Gross Profit, Net Profit, ROA, ROE), and Turnover Ratios (Fixed Asset, Debtor, Creditor, Inventory Turnover).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| from_fiscal_year | string | Start fiscal year name (e.g. '2024-2025') |
+| to_fiscal_year | string | End fiscal year name (e.g. '2025-2026') |
+| periodicity | string | Period grouping: Monthly, Quarterly, Half-Yearly, Yearly (default: Yearly) |
+
+### report_budget_variance
+Run ERPNext Budget Variance report — compares budgeted amounts against actuals for each account, grouped by period.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| fiscal_year | string | Fiscal year name (e.g. '2025-2026') |
+| budget_against | string | Budget dimension: Cost Center, Department, or Project (default: Cost Center) |
+| period | string | Period grouping: Monthly, Quarterly, Half-Yearly, Yearly (default: Yearly) |
 
 ---
 
@@ -502,7 +428,7 @@ Set or reset the display currency for the current chat session.
 
 ---
 
-## Inventory / Stock (4 tools)
+## Inventory / Stock (7 tools)
 
 ### get_inventory_summary
 Get inventory summary including stock levels and valuation.
@@ -538,6 +464,40 @@ Get age of stock in warehouse — how long items have been sitting.
 |-----------|------|-------------|
 | warehouse | string | Filter by specific warehouse |
 | company | string | Company name |
+
+### report_stock_ledger
+Run ERPNext Stock Ledger report — a detailed record of all stock movements. Shows inward/outward transactions related to manufacturing, purchasing, selling, and stock transfers.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| warehouse | string | Filter by warehouse name |
+| item_code | string | Filter by specific item code |
+| item_group | string | Filter by item group |
+
+### report_stock_balance
+Run ERPNext Stock Balance report — provides a real-time summary of current inventory quantities, valuation rates, and total stock value broken down by item and warehouse.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| from_date | string | Start date (YYYY-MM-DD) |
+| to_date | string | End date (YYYY-MM-DD) |
+| warehouse | string | Filter by warehouse name |
+| item_code | string | Filter by specific item code |
+| item_group | string | Filter by item group |
+
+### report_stock_ageing
+Run ERPNext Stock Ageing report — monitors how long inventory has been in warehouses, helping identify slow-moving or obsolete items.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| company | string | Company name |
+| to_date | string | Report date (YYYY-MM-DD, default: today) |
+| warehouse | string | Filter by warehouse name |
+| item_code | string | Filter by specific item code |
 
 ---
 
@@ -795,13 +755,32 @@ Update an existing ToDo task.
 
 | Category | Tools |
 |----------|-------|
-| CRM | 6 |
-| Sales / Selling | 5 |
-| Buying / Purchase | 4 |
-| Finance (General, CFO, GL, Budget, Cash Flow, Receivables, Payables, Profitability, Ratios, Working Capital, Consolidation, Session) | 38 |
-| Inventory / Stock | 4 |
+| CRM | 5 |
+| Sales / Selling (custom + report) | 7 |
+| Buying / Purchase (custom + report) | 4 |
+| Finance — Custom Analytics | 8 |
+| Finance — ERPNext Standard Reports | 14 |
+| Finance — Session Management | 2 |
+| Inventory / Stock (custom + report) | 7 |
 | HRMS | 6 |
 | IDP (Document Processing) | 3 |
 | Predictive Analytics | 5 |
 | Operations (Create, Search, Update) | 9 |
-| **Total** | **80** |
+| **Total** | **70** |
+
+### Phase 12B Changes
+
+The following tools were **removed** in Phase 12B and replaced by ERPNext standard report wrappers:
+
+- `get_financial_summary` → replaced by `report_profit_and_loss` + `report_balance_sheet`
+- `get_cash_flow_analysis` → replaced by `report_cash_flow`
+- `get_trial_balance` → replaced by `report_trial_balance`
+- `get_account_statement` → replaced by `report_general_ledger`
+- `get_receivable_aging`, `get_top_debtors` → replaced by `report_accounts_receivable`, `report_accounts_receivable_summary`
+- `get_payable_aging`, `get_top_creditors` → replaced by `report_accounts_payable`, `report_accounts_payable_summary`
+- `get_liquidity_ratios`, `get_profitability_ratios`, `get_efficiency_ratios` → replaced by `report_financial_ratios`
+- `get_working_capital_summary`, `get_cash_conversion_cycle` → replaced by `report_financial_ratios` (turnover ratios)
+- `get_budget_vs_actual`, `get_budget_variance` → replaced by `report_budget_variance`
+- `get_consolidated_report` → replaced by `report_consolidated_financial_statement`, `report_consolidated_trial_balance`
+- `get_cash_flow_statement`, `get_cash_flow_trend` → `get_cash_flow` retained (Payment Entry-based), GL-based statement replaced by `report_cash_flow`
+- `get_profitability_by_customer`, `get_profitability_by_item`, `get_profitability_by_territory` → consolidated into `get_profitability`

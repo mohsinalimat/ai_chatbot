@@ -351,31 +351,30 @@ ai_chatbot/tools/
 |                                               BaseTool.execute_tool() and
 |                                               get_all_tools_schema() delegate to registry.
 |
++-- common.py                                 # Shared helpers: primary() for company lists,
+|                                               common utility functions used across tools
+|
 +-- selling.py                                # Sales analytics (5 tools):
 |                                               get_sales_analytics, get_top_customers,
-|                                               get_sales_by_item, get_sales_order_status,
-|                                               get_multidimensional_summary
+|                                               get_transaction_trend, get_sales_by_territory,
+|                                               get_by_item_group
 |
-+-- buying.py                                 # Purchase analytics (4 tools):
-|                                               get_purchase_analytics, get_top_suppliers,
-|                                               get_purchase_by_item, get_purchase_order_status
++-- buying.py                                 # Purchase analytics (2 tools):
+|                                               get_purchase_analytics, get_supplier_performance
 |
 +-- stock.py                                  # Inventory tools (4 tools):
-|                                               get_stock_levels, get_stock_movement,
-|                                               get_low_stock_items, get_stock_valuation
+|                                               get_inventory_summary, get_low_stock_items,
+|                                               get_stock_movement, get_stock_ageing
 |
-+-- account.py                                # Basic accounting (2 tools):
-|                                               get_profit_and_loss, get_balance_sheet
-|
-+-- crm.py                                    # CRM tools (6 tools):
-|                                               get_lead_analytics, get_opportunity_pipeline,
-|                                               get_lead_sources, get_conversion_rates,
-|                                               get_customer_acquisition, get_crm_summary
++-- crm.py                                    # CRM tools (5 tools):
+|                                               get_lead_statistics, get_opportunity_analytics,
+|                                               get_lead_conversion_rate, get_lead_source_analysis,
+|                                               get_sales_funnel
 |
 +-- hrms.py                                   # HR tools (6 tools, requires HRMS app):
 |                                               get_employee_count, get_attendance_summary,
-|                                               get_leave_summary, get_payroll_summary,
-|                                               get_department_headcount, get_employee_turnover
+|                                               get_leave_balance, get_payroll_summary,
+|                                               get_department_wise_salary, get_employee_turnover
 |
 +-- idp.py                                    # Document processing tools (3 tools):
 |                                               extract_document_data, create_from_extracted_data,
@@ -385,20 +384,39 @@ ai_chatbot/tools/
 |                                               set_include_subsidiaries,
 |                                               set_target_currency
 |
-+-- consolidation.py                          # Multi-company consolidation (1 tool):
-|                                               get_consolidated_summary
-|
-+-- finance/                                  # Finance sub-package (10 modules, ~20 tools)
++-- finance/                                  # Finance sub-package (5 modules, 8 tools)
+|   +-- common.py                             # Shared finance helpers (primary, date utils)
 |   +-- analytics.py                          # Multi-dimensional financial summary
-|   +-- gl_analytics.py                       # GL Entry-based analysis
-|   +-- cfo.py                                # CFO dashboard (executive overview)
-|   +-- profitability.py                      # Profitability analysis
-|   +-- ratios.py                             # Financial ratios (liquidity, leverage, etc.)
-|   +-- budget.py                             # Budget vs actual analysis
-|   +-- cash_flow.py                          # Cash flow analysis
-|   +-- receivables.py                        # Receivables aging
-|   +-- payables.py                           # Payables aging
-|   +-- working_capital.py                    # Working capital analysis
+|   +-- gl_analytics.py                       # GL summary with flexible grouping (1 tool)
+|   +-- cfo.py                                # CFO dashboard, financial overview,
+|   |                                           monthly comparison (3 tools)
+|   +-- profitability.py                      # Profitability by customer/item/territory (1 tool)
+|   +-- cash_flow.py                          # Payment Entry-based cash flow analysis,
+|                                               bank balance (2 tools)
+|
++-- reports/                                  # ERPNext Standard Report wrappers (Phase 12B)
+|   +-- _base.py                              # Base utilities: run_report(), build_report_response(),
+|   |                                           build_financial_filters(), get_fiscal_year_name()
+|   +-- finance.py                            # 14 financial report tools:
+|   |                                           report_general_ledger, report_accounts_receivable,
+|   |                                           report_accounts_receivable_summary,
+|   |                                           report_accounts_payable,
+|   |                                           report_accounts_payable_summary,
+|   |                                           report_trial_balance, report_profit_and_loss,
+|   |                                           report_balance_sheet, report_cash_flow,
+|   |                                           report_consolidated_financial_statement,
+|   |                                           report_consolidated_trial_balance,
+|   |                                           report_account_balance, report_financial_ratios,
+|   |                                           report_budget_variance
+|   +-- sales.py                              # 2 sales report tools:
+|   |                                           report_sales_register,
+|   |                                           report_item_wise_sales_register
+|   +-- purchase.py                           # 2 purchase report tools:
+|   |                                           report_purchase_register,
+|   |                                           report_item_wise_purchase_register
+|   +-- stock.py                              # 3 stock report tools:
+|                                               report_stock_ledger, report_stock_balance,
+|                                               report_stock_ageing
 |
 +-- operations/                               # CRUD operations (3 modules)
 |   +-- create.py                             # Create ERPNext records (with confirmation)

@@ -120,12 +120,13 @@ class ChatAPI {
   /**
    * Send a message and get AI response (non-streaming)
    */
-  async sendMessage(conversationId, message, stream = false, attachments = null) {
+  async sendMessage(conversationId, message, stream = false, attachments = null, { isRetry = false } = {}) {
     return this.request('send_message', {
       conversation_id: conversationId,
       message,
       stream,
       attachments: attachments ? JSON.stringify(attachments) : null,
+      is_retry: isRetry,
     })
   }
 
@@ -134,12 +135,13 @@ class ChatAPI {
    * The actual response tokens arrive via Socket.IO realtime events.
    * This HTTP call returns immediately with a stream_id.
    */
-  async sendMessageStreaming(conversationId, message, attachments = null) {
+  async sendMessageStreaming(conversationId, message, attachments = null, { isRetry = false } = {}) {
     return this.request('send_message', {
       conversation_id: conversationId,
       message,
       stream: true,
       attachments: attachments ? JSON.stringify(attachments) : null,
+      is_retry: isRetry,
     })
   }
 

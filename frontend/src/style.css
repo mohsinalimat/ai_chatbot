@@ -113,3 +113,19 @@
 .markdown-body a {
   @apply text-primary-600 hover:text-primary-700 underline;
 }
+
+/* Phase 13A.1 — Streaming caret cursor animation */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background-color: #2563eb; /* blue-600 */
+  animation: cursor-blink 0.8s steps(2, start) infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

@@ -10,6 +10,10 @@
  * - socketio_port: imported from common_site_config.json
  * - site_name: injected into window by the server-rendered HTML template
  * - Auth: via session cookie (sid) with withCredentials: true
+ *
+ * Phase 13A: Adds browser online/offline detection (navigator.onLine) for
+ * instant Wi-Fi disconnect detection.  Socket.IO's heartbeat-based disconnect
+ * event can take 20-60s to fire; the browser's `offline` event fires instantly.
  */
 
 import { ref } from 'vue'
@@ -17,8 +21,54 @@ import { Manager } from 'socket.io-client'
 import { socketio_port } from '../../../../../sites/common_site_config.json'
 
 let socket = null
+let manager = null
 const isConnected = ref(false)
 const connectionError = ref(null)
+const reconnectFailed = ref(false)
+
+/** Whether the browser has network connectivity (navigator.onLine). */
+const isOnline = ref(typeof navigator !== 'undefined' ? navigator.onLine : true)
+
+// --- Browser online/offline event listeners ---
+// These fire instantly when Wi-Fi is toggled, unlike Socket.IO heartbeats.
+let _onlineListenerRegistered = false
+
+function _registerOnlineListeners() {
+  if (_onlineListenerRegistered || typeof window === 'undefined') return
+  _onlineListenerRegistered = true
+
+  window.addEventListener('online', () => {
+    console.debug('[AI Chatbot] Browser: online')
+    isOnline.value = true
+    // Always tear down and re-create the socket on network restore.
+    // socket.connect() is unreliable after the Manager has exhausted its
+    // reconnection attempts (reconnectFailed=true) or when the underlying
+    // transport is in a broken state.  A fresh init is the safest path.
+    if (socket) {
+      console.debug('[AI Chatbot] Re-initializing socket after network restore')
+      try { socket.disconnect() } catch { /* ignore */ }
+      socket = null
+      manager = null
+      reconnectFailed.value = false
+      connectionError.value = null
+    }
+    // Small delay to let the network stack stabilize before reconnecting
+    setTimeout(() => initSocket(), 500)
+  })
+
+  window.addEventListener('offline', () => {
+    console.debug('[AI Chatbot] Browser: offline')
+    isOnline.value = false
+    // Mark as disconnected immediately — don't wait for Socket.IO ping timeout.
+    // The socket itself may still report `connected` for several seconds until
+    // the transport layer detects the break, but we know the network is gone.
+    isConnected.value = false
+    connectionError.value = 'Network connection lost'
+  })
+}
+
+// Register immediately at module load time (singleton).
+_registerOnlineListeners()
 
 /**
  * Initialize the Socket.IO connection (singleton).
@@ -44,10 +94,11 @@ function initSocket() {
     console.debug(`[AI Chatbot] Socket.IO connecting to: ${baseUrl} (namespace: /${siteName})`)
 
     // Create a Manager for the base URL (no namespace in the URL)
-    const manager = new Manager(baseUrl, {
+    manager = new Manager(baseUrl, {
       withCredentials: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       timeout: 10000,
     })
 
@@ -57,6 +108,7 @@ function initSocket() {
     socket.on('connect', () => {
       isConnected.value = true
       connectionError.value = null
+      reconnectFailed.value = false
       console.debug('[AI Chatbot] Socket.IO connected')
     })
 
@@ -69,6 +121,25 @@ function initSocket() {
       isConnected.value = false
       connectionError.value = error.message
       console.warn('[AI Chatbot] Socket.IO connection error:', error.message)
+    })
+
+    // Manager-level reconnect lifecycle events
+    manager.on('reconnect', () => {
+      console.debug('[AI Chatbot] Socket.IO reconnected')
+      isConnected.value = true
+      reconnectFailed.value = false
+      connectionError.value = null
+    })
+
+    manager.on('reconnect_attempt', (attempt) => {
+      console.debug(`[AI Chatbot] Socket.IO reconnect attempt ${attempt}`)
+    })
+
+    manager.on('reconnect_failed', () => {
+      console.warn('[AI Chatbot] Socket.IO reconnection failed after all attempts')
+      reconnectFailed.value = true
+      isConnected.value = false
+      connectionError.value = 'Reconnection failed after multiple attempts'
     })
 
     return socket
@@ -122,6 +193,7 @@ function disconnect() {
   if (socket) {
     socket.disconnect()
     socket = null
+    manager = null
     isConnected.value = false
   }
 }
@@ -132,7 +204,9 @@ function disconnect() {
 export function useSocket() {
   return {
     isConnected,
+    isOnline,
     connectionError,
+    reconnectFailed,
     initSocket,
     getSocket,
     on,

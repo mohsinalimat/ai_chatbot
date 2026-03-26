@@ -139,7 +139,11 @@ def get_conversation_messages(conversation_id: str) -> dict:
 
 @frappe.whitelist()
 def send_message(
-	conversation_id: str, message: str, stream: bool = False, attachments: str | None = None
+	conversation_id: str,
+	message: str,
+	stream: bool = False,
+	attachments: str | None = None,
+	is_retry: bool | str = False,
 ) -> dict:
 	"""Send a message and get AI response.
 
@@ -152,6 +156,7 @@ def send_message(
 		message: The user's message text.
 		stream: Whether to use streaming mode.
 		attachments: Optional JSON string of file attachment metadata.
+		is_retry: If True, skip saving the user message (already persisted).
 	"""
 	try:
 		log_info("Incoming message", conversation_id=conversation_id, stream=stream)
@@ -159,7 +164,9 @@ def send_message(
 		if stream:
 			from ai_chatbot.api.streaming import send_message_streaming
 
-			return send_message_streaming(conversation_id, message, attachments=attachments)
+			return send_message_streaming(
+				conversation_id, message, attachments=attachments, is_retry=is_retry
+			)
 
 		# Validate conversation
 		conversation = frappe.get_doc("Chatbot Conversation", conversation_id)
@@ -169,17 +176,36 @@ def send_message(
 		# Set conversation context for session tools
 		frappe.flags.current_conversation_id = conversation_id
 
-		# Save user message
-		msg_doc = {
-			"doctype": "Chatbot Message",
-			"conversation": conversation_id,
-			"role": "user",
-			"content": message,
-			"timestamp": frappe.utils.now(),
-		}
-		if attachments:
-			msg_doc["attachments"] = attachments
-		frappe.get_doc(msg_doc).insert()
+		# Normalise is_retry (Frappe may pass "true"/"1" as a string)
+		is_retry = is_retry in (True, "true", "True", "1", 1)
+
+		if is_retry:
+			# Remove any incomplete assistant message from the failed attempt
+			incomplete_msgs = frappe.get_all(
+				"Chatbot Message",
+				filters={
+					"conversation": conversation_id,
+					"role": "assistant",
+					"status": "incomplete",
+				},
+				pluck="name",
+			)
+			for msg_name in incomplete_msgs:
+				frappe.delete_doc("Chatbot Message", msg_name, force=True)
+			if incomplete_msgs:
+				frappe.db.commit()
+		else:
+			# Save user message
+			msg_doc = {
+				"doctype": "Chatbot Message",
+				"conversation": conversation_id,
+				"role": "user",
+				"content": message,
+				"timestamp": frappe.utils.now(),
+			}
+			if attachments:
+				msg_doc["attachments"] = attachments
+			frappe.get_doc(msg_doc).insert()
 
 		# Get conversation history
 		history = get_conversation_history(conversation_id)

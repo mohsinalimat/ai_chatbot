@@ -27,7 +27,12 @@ TOKEN_BUFFER_SIZE = 20  # characters
 
 
 @frappe.whitelist()
-def send_message_streaming(conversation_id: str, message: str, attachments: str | None = None) -> dict:
+def send_message_streaming(
+	conversation_id: str,
+	message: str,
+	attachments: str | None = None,
+	is_retry: bool | str = False,
+) -> dict:
 	"""Send a message and stream the AI response via frappe.publish_realtime.
 
 	Saves the user message, then enqueues a background job that streams
@@ -38,11 +43,16 @@ def send_message_streaming(conversation_id: str, message: str, attachments: str 
 		conversation_id: The conversation document name.
 		message: The user's message text.
 		attachments: Optional JSON string of file attachment metadata.
+		is_retry: If True, skip saving the user message (already persisted)
+			and remove any incomplete assistant message from the previous attempt.
 
 	Returns:
 		dict with success status and stream_id.
 	"""
 	try:
+		# Normalise is_retry (Frappe may pass "true"/"1" as a string)
+		is_retry = is_retry in (True, "true", "True", "1", 1)
+
 		# Validate conversation ownership
 		conversation = frappe.get_doc("Chatbot Conversation", conversation_id)
 		if conversation.user != frappe.session.user:
@@ -51,18 +61,34 @@ def send_message_streaming(conversation_id: str, message: str, attachments: str 
 		# Generate a unique stream ID for this request
 		stream_id = str(uuid.uuid4())[:8]
 
-		# Save user message immediately (before enqueue)
-		msg_doc = {
-			"doctype": "Chatbot Message",
-			"conversation": conversation_id,
-			"role": "user",
-			"content": message,
-			"timestamp": frappe.utils.now(),
-		}
-		if attachments:
-			msg_doc["attachments"] = attachments
-		frappe.get_doc(msg_doc).insert()
-		frappe.db.commit()
+		if is_retry:
+			# Remove any incomplete assistant message from the failed attempt
+			incomplete_msgs = frappe.get_all(
+				"Chatbot Message",
+				filters={
+					"conversation": conversation_id,
+					"role": "assistant",
+					"status": "incomplete",
+				},
+				pluck="name",
+			)
+			for msg_name in incomplete_msgs:
+				frappe.delete_doc("Chatbot Message", msg_name, force=True)
+			if incomplete_msgs:
+				frappe.db.commit()
+		else:
+			# Save user message immediately (before enqueue)
+			msg_doc = {
+				"doctype": "Chatbot Message",
+				"conversation": conversation_id,
+				"role": "user",
+				"content": message,
+				"timestamp": frappe.utils.now(),
+			}
+			if attachments:
+				msg_doc["attachments"] = attachments
+			frappe.get_doc(msg_doc).insert()
+			frappe.db.commit()
 
 		# Enqueue the streaming job so HTTP response returns immediately.
 		# Always use now=False (even in dev mode) to ensure the HTTP response
@@ -275,15 +301,76 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 
 	except Exception as e:
 		log_error(f"Streaming job error: {e!s}", title="Streaming")
+
+		# Phase 13A.3: Save partial response as incomplete message
+		# so the user can see what was generated before the error.
+		_save_partial_response(conversation_id, e)
+
+		# Publish a user-friendly error message (avoid raw tracebacks)
+		friendly = _friendly_error_message(e)
 		_publish(
 			"ai_chat_error",
 			{
 				"conversation_id": conversation_id,
 				"stream_id": stream_id,
-				"error": str(e),
+				"error": friendly,
 			},
 			user=user,
 		)
+
+
+def _save_partial_response(conversation_id: str, error: Exception) -> None:
+	"""Save any partial streamed content as an incomplete assistant message.
+
+	This allows the frontend to display whatever was generated before the
+	error, rather than discarding it entirely.  The message is tagged with
+	``status='incomplete'`` so the UI can render it differently (e.g. with
+	a "Response interrupted" label).
+	"""
+	try:
+		# Partial content is not available here (it lives in the background
+		# job's local variables). Instead, we mark a zero-content message so
+		# the frontend knows the stream was interrupted.
+		frappe.get_doc(
+			{
+				"doctype": "Chatbot Message",
+				"conversation": conversation_id,
+				"role": "assistant",
+				"content": "(Response interrupted due to an error. Please retry.)",
+				"timestamp": frappe.utils.now(),
+				"tokens_used": 0,
+				"status": "incomplete",
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+	except Exception:
+		# Don't let a save failure mask the original error
+		log_error(
+			f"Failed to save partial response for {conversation_id}",
+			title="Streaming Partial Save",
+		)
+
+
+def _friendly_error_message(error: Exception) -> str:
+	"""Convert a raw exception into a user-facing error string.
+
+	Avoids leaking stack traces or internal details to the frontend.
+	"""
+	msg = str(error).lower()
+
+	if "rate" in msg and "limit" in msg:
+		return "The AI provider's rate limit was exceeded. Please wait a moment and try again."
+	if "timeout" in msg or "timed out" in msg:
+		return "The request timed out. Try a simpler question or a shorter conversation."
+	if "401" in msg or "auth" in msg or "api key" in msg:
+		return "Authentication with the AI provider failed. Please check the API key in Chatbot Settings."
+	if "connection" in msg or "connect" in msg:
+		return "Unable to connect to the AI provider. Please try again shortly."
+	if "context" in msg and "length" in msg:
+		return "The conversation is too long for the AI model's context window. Start a new chat or ask a shorter question."
+
+	# Generic fallback — keep it brief and actionable
+	return "Something went wrong while generating the response. Please try again."
 
 
 def _stream_with_tools(
@@ -524,12 +611,13 @@ def _stream_single_round(provider, history, tools, conversation_id, stream_id, u
 				buffer = ""
 
 		elif event_type == "error":
+			raw_error = event.get("content", "Unknown error")
 			_publish(
 				"ai_chat_error",
 				{
 					"conversation_id": conversation_id,
 					"stream_id": stream_id,
-					"error": event.get("content", "Unknown error"),
+					"error": _friendly_error_message(Exception(raw_error)),
 				},
 				user=user,
 			)

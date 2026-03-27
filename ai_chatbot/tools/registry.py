@@ -270,6 +270,7 @@ def _ensure_tools_loaded():
 	if is_erpnext_installed():
 		import ai_chatbot.tools.buying
 		import ai_chatbot.tools.crm
+		import ai_chatbot.tools.crud
 		import ai_chatbot.tools.finance.analytics
 		import ai_chatbot.tools.finance.cash_flow
 		import ai_chatbot.tools.finance.cfo
@@ -283,8 +284,6 @@ def _ensure_tools_loaded():
 		import ai_chatbot.tools.predictive.cash_flow_forecast
 		import ai_chatbot.tools.predictive.demand_forecast
 		import ai_chatbot.tools.predictive.sales_forecast
-
-		# Phase 12B: ERPNext Report Integration
 		import ai_chatbot.tools.reports.finance
 		import ai_chatbot.tools.reports.purchase
 		import ai_chatbot.tools.reports.sales

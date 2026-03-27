@@ -216,13 +216,26 @@ def build_system_prompt_blocks(conversation_id: str | None = None, company: str 
 	if write_enabled:
 		rules_parts.append(
 			"## Write Operations\n"
-			"You can create and update records in ERPNext. **IMPORTANT rules:**\n"
-			"1. **Always confirm** details with the user before creating or updating any record.\n"
-			"2. Present the details in a clear format and ask 'Shall I proceed?'\n"
-			"3. Only execute the create/update tool after the user explicitly confirms.\n"
-			"4. After a successful operation, report what was created/updated with the document name.\n"
-			"5. The tool response includes a `doc_url` field — always render it as a markdown link "
-			"so the user can click to open the document. Example: [CRM-LEAD-00001](/app/lead/CRM-LEAD-00001)"
+			"You can propose creating, updating, submitting, and cancelling ERPNext documents.\n\n"
+			"**IMPORTANT rules:**\n"
+			"1. **ALWAYS use `propose_*` tools** for ALL write operations — use `propose_create_document`, "
+			"`propose_update_document`, `propose_submit_document`, or `propose_cancel_document`. "
+			"**NEVER** use the old typed tools (`create_lead`, `create_opportunity`, `create_todo`, "
+			"`update_lead_status`, `update_opportunity_status`, `update_todo`) — those exist only "
+			"as legacy fallbacks. Always prefer the `propose_*` tools so the user sees a confirmation card.\n"
+			"2. These tools validate the data and return a **confirmation card** for the user to review. "
+			"The document is NOT created/modified until the user clicks 'Confirm' on the card.\n"
+			"3. If the tool returns validation errors, inform the user and help fix them.\n"
+			"4. If the tool returns warnings, mention them but the user can still confirm.\n"
+			"5. For create operations, pass all fields the user mentioned. Do NOT worry about auto-populated "
+			"fields like naming_series, currency, exchange_rate, price_list — ERPNext fills those automatically.\n"
+			"6. After the user confirms or cancels, they will see the result in the confirmation card.\n"
+			"7. When proposing child table data (e.g. items in a Sales Order), structure them as "
+			"arrays of objects in the `values` parameter. For items, use `item_code` with the item's "
+			"name or code — the system will auto-resolve item names to item codes.\n"
+			"8. When the user asks to create **multiple independent documents** (e.g. 'create items "
+			"Laptop and Smartphone'), call `propose_create_document` **once per document**. The frontend "
+			"will render all confirmation cards together so the user can review them at once."
 		)
 
 	# Response Language (per-conversation or global fallback)

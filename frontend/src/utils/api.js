@@ -8,6 +8,7 @@
 const API_BASE = '/api/method/ai_chatbot.api.chat'
 const FILES_API_BASE = '/api/method/ai_chatbot.api.files'
 const EXPORT_API_BASE = '/api/method/ai_chatbot.api.export'
+const CRUD_API_BASE = '/api/method/ai_chatbot.api.crud'
 
 class ChatAPI {
   constructor() {
@@ -284,6 +285,41 @@ class ChatAPI {
       console.error('API request error:', error)
       throw error
     }
+  }
+
+  // ── Phase 13B: CRUD Confirmation API methods ──
+
+  /**
+   * Confirm a proposed CRUD action (user clicked "Create Draft" / "Update" / etc.).
+   * @param {string} confirmationId - The confirmation UUID from the propose_* tool result
+   * @returns {Promise<Object>} Result with success, name, doc_url, undo_token
+   */
+  async confirmAction(confirmationId) {
+    return this.requestEndpoint(CRUD_API_BASE, 'confirm_action', {
+      confirmation_id: confirmationId,
+    })
+  }
+
+  /**
+   * Cancel a proposed CRUD action (user clicked "Cancel").
+   * @param {string} confirmationId - The confirmation UUID
+   * @returns {Promise<Object>} Result with success status
+   */
+  async cancelAction(confirmationId) {
+    return this.requestEndpoint(CRUD_API_BASE, 'cancel_action', {
+      confirmation_id: confirmationId,
+    })
+  }
+
+  /**
+   * Undo a recently confirmed CRUD action (within 5-minute window).
+   * @param {string} undoToken - The undo token UUID from confirm_action result
+   * @returns {Promise<Object>} Result with success status
+   */
+  async undoAction(undoToken) {
+    return this.requestEndpoint(CRUD_API_BASE, 'undo_action', {
+      undo_token: undoToken,
+    })
   }
 
 }

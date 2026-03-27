@@ -98,6 +98,99 @@ def update_document(doctype, name, values):
 	}
 
 
+def submit_document(doctype, name):
+	"""Submit a draft document with permission checks.
+
+	Args:
+		doctype: DocType name.
+		name: Document name to submit.
+
+	Returns:
+		Dict with submitted document name and URL.
+
+	Raises:
+		frappe.DoesNotExistError: If document doesn't exist.
+		frappe.PermissionError: If user lacks submit permission.
+		frappe.ValidationError: If document is not a Draft.
+	"""
+	if not frappe.db.exists(doctype, name):
+		frappe.throw(f"{doctype} '{name}' does not exist", frappe.DoesNotExistError)
+
+	if not check_permission(doctype, "submit", name):
+		frappe.throw(f"You do not have permission to submit {doctype} '{name}'", frappe.PermissionError)
+
+	doc = frappe.get_doc(doctype, name)
+	if doc.docstatus != 0:
+		frappe.throw(
+			f"{doctype} '{name}' is not a Draft (current docstatus={doc.docstatus})",
+			frappe.ValidationError,
+		)
+
+	doc.submit()
+	frappe.db.commit()
+
+	return {
+		"doctype": doctype,
+		"name": doc.name,
+		"doc_url": _build_doc_url(doctype, doc.name),
+		"message": f"{doctype} '{doc.name}' submitted successfully",
+	}
+
+
+def cancel_document(doctype, name):
+	"""Cancel a submitted document with permission checks.
+
+	Args:
+		doctype: DocType name.
+		name: Document name to cancel.
+
+	Returns:
+		Dict with cancelled document name and URL.
+
+	Raises:
+		frappe.DoesNotExistError: If document doesn't exist.
+		frappe.PermissionError: If user lacks cancel permission.
+		frappe.ValidationError: If document is not Submitted.
+	"""
+	if not frappe.db.exists(doctype, name):
+		frappe.throw(f"{doctype} '{name}' does not exist", frappe.DoesNotExistError)
+
+	if not check_permission(doctype, "cancel", name):
+		frappe.throw(f"You do not have permission to cancel {doctype} '{name}'", frappe.PermissionError)
+
+	doc = frappe.get_doc(doctype, name)
+	if doc.docstatus != 1:
+		frappe.throw(
+			f"{doctype} '{name}' is not Submitted (current docstatus={doc.docstatus})",
+			frappe.ValidationError,
+		)
+
+	doc.cancel()
+	frappe.db.commit()
+
+	return {
+		"doctype": doctype,
+		"name": doc.name,
+		"doc_url": _build_doc_url(doctype, doc.name),
+		"message": f"{doctype} '{doc.name}' cancelled successfully",
+	}
+
+
+def get_document_values(doctype, name, fieldnames):
+	"""Get current field values from a document (snapshot for undo).
+
+	Args:
+		doctype: DocType name.
+		name: Document name.
+		fieldnames: List of field names to snapshot.
+
+	Returns:
+		Dict mapping fieldname to current value.
+	"""
+	doc = frappe.get_doc(doctype, name)
+	return {f: doc.get(f) for f in fieldnames if doc.get(f) is not None}
+
+
 def _build_doc_url(doctype, name):
 	"""Build the full URL to a document in ERPNext.
 

@@ -322,33 +322,16 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 def _save_partial_response(conversation_id: str, error: Exception) -> None:
 	"""Save any partial streamed content as an incomplete assistant message.
 
-	This allows the frontend to display whatever was generated before the
-	error, rather than discarding it entirely.  The message is tagged with
-	``status='incomplete'`` so the UI can render it differently (e.g. with
-	a "Response interrupted" label).
+	Currently a no-op because partial content lives in the background job's
+	local variables and is not accessible here.  The frontend error banner
+	(``ai_chat_error`` realtime event) is the sole channel for communicating
+	errors to the user — saving a placeholder message would result in a
+	confusing duplicate display (one message bubble + one error banner).
+
+	If partial-content capture is implemented in the future (e.g. via a
+	shared cache key), this function should save the real partial content
+	with ``status='incomplete'`` and skip saving when content is empty.
 	"""
-	try:
-		# Partial content is not available here (it lives in the background
-		# job's local variables). Instead, we mark a zero-content message so
-		# the frontend knows the stream was interrupted.
-		frappe.get_doc(
-			{
-				"doctype": "Chatbot Message",
-				"conversation": conversation_id,
-				"role": "assistant",
-				"content": "(Response interrupted due to an error. Please retry.)",
-				"timestamp": frappe.utils.now(),
-				"tokens_used": 0,
-				"status": "incomplete",
-			}
-		).insert(ignore_permissions=True)
-		frappe.db.commit()
-	except Exception:
-		# Don't let a save failure mask the original error
-		log_error(
-			f"Failed to save partial response for {conversation_id}",
-			title="Streaming Partial Save",
-		)
 
 
 def _friendly_error_message(error: Exception) -> str:
@@ -358,8 +341,20 @@ def _friendly_error_message(error: Exception) -> str:
 	"""
 	msg = str(error).lower()
 
-	if "rate" in msg and "limit" in msg:
+	# Rate limit / throttling (various provider phrasings)
+	if ("rate" in msg and "limit" in msg) or "too many requests" in msg or "429" in msg:
 		return "The AI provider's rate limit was exceeded. Please wait a moment and try again."
+	# Quota / billing / credit exhaustion
+	if "quota" in msg or ("exceeded" in msg and ("api" in msg or "credit" in msg or "billing" in msg)):
+		return (
+			"Your AI API quota has been exceeded. Please check your API plan "
+			"and billing details with your AI provider, or try again later."
+		)
+	if "credit" in msg and ("balance" in msg or "billing" in msg or "purchase" in msg):
+		return (
+			"Your AI API quota has been exceeded. Please check your API plan "
+			"and billing details with your AI provider, or try again later."
+		)
 	if "timeout" in msg or "timed out" in msg:
 		return "The request timed out. Try a simpler question or a shorter conversation."
 	if "401" in msg or "auth" in msg or "api key" in msg:
@@ -369,7 +364,11 @@ def _friendly_error_message(error: Exception) -> str:
 	if "context" in msg and "length" in msg:
 		return "The conversation is too long for the AI model's context window. Start a new chat or ask a shorter question."
 
-	# Generic fallback — keep it brief and actionable
+	# Generic fallback — include a sanitized excerpt of the original error
+	# so the user has some actionable context instead of a blank message.
+	original = str(error).strip()
+	if original and len(original) < 200:
+		return f"An error occurred: {original}"
 	return "Something went wrong while generating the response. Please try again."
 
 
@@ -612,16 +611,10 @@ def _stream_single_round(provider, history, tools, conversation_id, stream_id, u
 
 		elif event_type == "error":
 			raw_error = event.get("content", "Unknown error")
-			_publish(
-				"ai_chat_error",
-				{
-					"conversation_id": conversation_id,
-					"stream_id": stream_id,
-					"error": _friendly_error_message(Exception(raw_error)),
-				},
-				user=user,
-			)
-			break
+			# Raise so the caller's except block publishes the error and
+			# saves a partial response instead of falling through to the
+			# empty-content fallback.
+			raise Exception(raw_error)
 
 	# Flush any remaining buffer
 	if buffer:

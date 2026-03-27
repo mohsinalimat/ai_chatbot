@@ -194,6 +194,13 @@ INTENT_KEYWORDS: dict[str, list[tuple[str, float]]] = {
 	"update": [("operations", 1.0)],
 	"todo": [("operations", 1.0)],
 	"task": [("operations", 0.8)],
+	"submit": [("operations", 1.0)],
+	"cancel document": [("operations", 1.0)],
+	"draft": [("operations", 0.8)],
+	"undo": [("operations", 0.9)],
+	"modify": [("operations", 0.8)],
+	"delete": [("operations", 0.9)],
+	"remove": [("operations", 0.8)],
 	# ── cross-category keywords ──
 	"customer": [("selling", 0.7), ("crm", 0.5)],
 	"customers": [("selling", 0.7), ("crm", 0.5)],
@@ -249,7 +256,7 @@ QUERY_TYPE_SIGNALS: dict[str, re.Pattern] = {
 		re.IGNORECASE,
 	),
 	"action": re.compile(
-		r"\b(create|add|update|change|set|modify|delete|remove)\b",
+		r"\b(create|add|update|change|set|modify|delete|remove|submit|cancel|propose|undo|draft)\b",
 		re.IGNORECASE,
 	),
 	"aggregate": re.compile(

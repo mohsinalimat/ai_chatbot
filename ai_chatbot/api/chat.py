@@ -84,6 +84,7 @@ def get_conversation_messages(conversation_id: str) -> dict:
 				"tool_calls",
 				"tool_results",
 				"attachments",
+				"confirmation_state",
 			],
 			order_by="timestamp asc",
 		)
@@ -117,6 +118,15 @@ def get_conversation_messages(conversation_id: str) -> dict:
 					)
 				except (json.JSONDecodeError, TypeError):
 					msg["attachments"] = None
+			if msg.get("confirmation_state"):
+				try:
+					msg["confirmation_state"] = (
+						json.loads(msg["confirmation_state"])
+						if isinstance(msg["confirmation_state"], str)
+						else msg["confirmation_state"]
+					)
+				except (json.JSONDecodeError, TypeError):
+					msg["confirmation_state"] = None
 
 		# Load session context for conversation-level preferences
 		session_context = {}

@@ -17,7 +17,8 @@
   "section_break_2",
   "tool_calls",
   "tool_results",
-  "attachments"
+  "attachments",
+  "confirmation_state"
  ],
  "fields": [
   {
@@ -93,6 +94,13 @@
    "fieldname": "attachments",
    "fieldtype": "JSON",
    "label": "Attachments"
+  },
+  {
+   "fieldname": "confirmation_state",
+   "fieldtype": "JSON",
+   "hidden": 1,
+   "label": "Confirmation State",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,

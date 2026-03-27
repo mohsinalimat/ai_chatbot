@@ -87,6 +87,25 @@
               :rows="table.rows"
             />
 
+            <!-- Confirmation Cards from propose_* tool results (Phase 13B) -->
+            <ConfirmationCard
+              v-for="(conf, idx) in confirmationData"
+              :key="'conf-' + idx"
+              :confirmation-id="conf.confirmation_id"
+              :action="conf.action"
+              :doctype="conf.doctype"
+              :name="conf.name"
+              :display-fields="conf.display_fields || []"
+              :child-tables="conf.child_tables || []"
+              :warnings="conf.warnings || []"
+              :errors="conf.errors || []"
+              :is-submittable="conf.is_submittable || false"
+              :initial-state="getConfirmationInitialState(conf.confirmation_id)"
+              :initial-result="getConfirmationInitialResult(conf.confirmation_id)"
+              :initial-undo-token="getConfirmationUndoToken(conf.confirmation_id)"
+              :initial-undo-expires="getConfirmationUndoExpires(conf.confirmation_id)"
+            />
+
             <!-- Read-Only Tool Calls Display -->
             <div v-if="readToolCalls.length > 0" class="mt-4">
               <div class="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -172,6 +191,7 @@ import { chatAPI } from '../utils/api'
 import ChartMessage from './charts/ChartMessage.vue'
 import BiCards from './charts/BiCards.vue'
 import HierarchicalTable from './charts/HierarchicalTable.vue'
+import ConfirmationCard from './ConfirmationCard.vue'
 
 const logoSvg = inject('logoSvg')
 
@@ -322,6 +342,40 @@ const hierarchicalTables = computed(() => {
     .map(r => r.data.hierarchical_table)
 })
 
+// Extract confirmation card data from tool_results (Phase 13B)
+const confirmationData = computed(() => {
+  if (!props.message.tool_results) return []
+
+  let results = props.message.tool_results
+  if (typeof results === 'string') {
+    try {
+      results = JSON.parse(results)
+    } catch {
+      return []
+    }
+  }
+
+  if (!Array.isArray(results)) results = [results]
+
+  return results
+    .filter(r => r && r.data?.confirmation_required)
+    .map(r => r.data)
+})
+
+// Parse persisted confirmation_state for page reloads (Phase 13B)
+const parsedConfirmationState = computed(() => {
+  if (!props.message.confirmation_state) return null
+  let state = props.message.confirmation_state
+  if (typeof state === 'string') {
+    try {
+      state = JSON.parse(state)
+    } catch {
+      return null
+    }
+  }
+  return state
+})
+
 // Check if tool_calls is valid and has items
 const hasValidToolCalls = computed(() => {
   const toolCalls = props.message.tool_calls
@@ -372,10 +426,10 @@ const validToolCalls = computed(() => {
   })
 })
 
-// Check if a tool call is a write operation (create/update/delete)
+// Check if a tool call is a write operation (create/update/delete/propose/submit/cancel)
 const isWriteOperation = (tool) => {
   const name = tool?.function?.name || tool?.name || ''
-  return /^(create_|update_|delete_)/.test(name)
+  return /^(create_|update_|delete_|propose_|submit_|cancel_)/.test(name)
 }
 
 // Split tool calls into read-only and write operations
@@ -418,6 +472,44 @@ const formatToolName = (name, keepPrefix = false) => {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+// Confirmation state helpers for page reload persistence (Phase 13B)
+// Supports both old single-confirmation format and new multi-key format
+const _getConfirmationEntry = (confirmationId) => {
+  const cs = parsedConfirmationState.value
+  if (!cs) return null
+
+  // New multi-key format: { "uuid1": { state, result, ... }, "uuid2": { ... } }
+  if (cs[confirmationId]) return cs[confirmationId]
+
+  // Old single-confirmation format: { confirmation_id, state, result, ... }
+  if (cs.confirmation_id === confirmationId) return cs
+
+  return null
+}
+
+const getConfirmationInitialState = (confirmationId) => {
+  const entry = _getConfirmationEntry(confirmationId)
+  if (entry?.state) {
+    return entry.state === 'confirmed' ? 'success' : entry.state
+  }
+  return 'pending'
+}
+
+const getConfirmationInitialResult = (confirmationId) => {
+  const entry = _getConfirmationEntry(confirmationId)
+  return entry?.result || null
+}
+
+const getConfirmationUndoToken = (confirmationId) => {
+  const entry = _getConfirmationEntry(confirmationId)
+  return entry?.undo_token || null
+}
+
+const getConfirmationUndoExpires = (confirmationId) => {
+  const entry = _getConfirmationEntry(confirmationId)
+  return entry?.undo_expires || null
 }
 
 // PDF export handler

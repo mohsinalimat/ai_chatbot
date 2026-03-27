@@ -59,7 +59,7 @@ CATEGORY_ADJACENCY: dict[str, list[str]] = {
 	"buying": ["operations"],
 	"crm": ["operations"],
 	"inventory": [],
-	"finance": [],
+	"finance": ["operations"],
 	"hrms": [],
 	"idp": ["operations"],
 	"predictive": ["selling", "finance"],

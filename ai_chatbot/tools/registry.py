@@ -119,7 +119,12 @@ def execute_tool(tool_name: str, arguments: dict) -> dict:
 	# Permission check on declared doctypes
 	for dt in tool_info.get("doctypes", []):
 		if not frappe.has_permission(dt, "read", user=frappe.session.user):
-			return {"success": False, "error": f"You do not have permission to access {dt}"}
+			return {
+				"error": True,
+				"error_type": "permission_denied",
+				"message": f"You do not have permission to access {dt}",
+				"suggestion": f"The user doesn't have access to {dt}. Inform them that they need the appropriate role/permission.",
+			}
 
 	conversation_id = getattr(frappe.flags, "current_conversation_id", None)
 	try:
@@ -134,7 +139,9 @@ def execute_tool(tool_name: str, arguments: dict) -> dict:
 		return {"success": True, "data": result}
 	except Exception as e:
 		log_tool_error(tool_name, e, arguments)
-		return {"success": False, "error": str(e)}
+		from ai_chatbot.core.resilience import classify_tool_error
+
+		return classify_tool_error(e, tool_name, arguments)
 
 
 def get_tool_info(tool_name: str) -> dict | None:

@@ -13,6 +13,7 @@ import json
 import frappe
 import requests
 
+from ai_chatbot.core.exceptions import ProviderAPIError
 from ai_chatbot.core.logger import log_provider_error
 
 # Default models per provider
@@ -78,6 +79,44 @@ def classify_api_error(error: requests.exceptions.RequestException) -> str:
 		return AUTH_ERROR_MESSAGE
 
 	return str(error)
+
+
+def _extract_error_details(error: requests.exceptions.RequestException) -> tuple[int, float | None]:
+	"""Extract HTTP status code and Retry-After value from a request error.
+
+	Returns:
+		Tuple of (status_code, retry_after_seconds). status_code is 0 if
+		not available, retry_after is None if not present.
+	"""
+	status_code = 0
+	retry_after = None
+
+	if hasattr(error, "response") and error.response is not None:
+		status_code = error.response.status_code
+		header = error.response.headers.get("Retry-After")
+		if header:
+			try:
+				retry_after = float(header)
+			except (ValueError, TypeError):
+				pass
+
+	return status_code, retry_after
+
+
+def _raise_provider_api_error(provider_name: str, error: requests.exceptions.RequestException):
+	"""Raise a ProviderAPIError with status code and retry-after extracted from the response.
+
+	This replaces frappe.throw() in provider chat_completion() methods so the
+	resilience layer can catch, classify, and potentially retry the call.
+	"""
+	status_code, retry_after = _extract_error_details(error)
+	raise ProviderAPIError(
+		provider_name,
+		status_code=status_code,
+		message=classify_api_error(error),
+		retry_after=retry_after,
+		original_error=error,
+	)
 
 
 class AIProvider:
@@ -153,7 +192,7 @@ class OpenAIProvider(AIProvider):
 
 		except requests.exceptions.RequestException as e:
 			log_provider_error("OpenAI", e)
-			frappe.throw(f"OpenAI API Error: {classify_api_error(e)}")
+			_raise_provider_api_error("OpenAI", e)
 
 	def chat_completion_stream(self, messages, tools=None):
 		"""Yield structured streaming events from OpenAI.
@@ -264,7 +303,13 @@ class OpenAIProvider(AIProvider):
 
 		except requests.exceptions.RequestException as e:
 			log_provider_error("OpenAI", e)
-			yield {"type": "error", "content": classify_api_error(e)}
+			status_code, retry_after = _extract_error_details(e)
+			yield {
+				"type": "error",
+				"content": classify_api_error(e),
+				"status_code": status_code,
+				"retry_after": retry_after,
+			}
 
 
 class GeminiProvider(OpenAIProvider):
@@ -391,7 +436,7 @@ class ClaudeProvider(AIProvider):
 
 		except requests.exceptions.RequestException as e:
 			log_provider_error("Claude", e)
-			frappe.throw(f"Claude API Error: {classify_api_error(e)}")
+			_raise_provider_api_error("Claude", e)
 
 	def chat_completion_stream(self, messages, tools=None):
 		"""Yield structured streaming events from Claude.
@@ -525,7 +570,13 @@ class ClaudeProvider(AIProvider):
 
 		except requests.exceptions.RequestException as e:
 			log_provider_error("Claude", e)
-			yield {"type": "error", "content": classify_api_error(e)}
+			status_code, retry_after = _extract_error_details(e)
+			yield {
+				"type": "error",
+				"content": classify_api_error(e),
+				"status_code": status_code,
+				"retry_after": retry_after,
+			}
 
 	def _convert_messages_to_claude(self, messages):
 		"""Convert OpenAI message format to Claude format"""
@@ -724,3 +775,46 @@ def get_summary_provider(provider_name: str) -> AIProvider:
 		return GeminiProvider(resolved)
 	else:
 		frappe.throw(f"Unknown provider for summarisation: {provider_name}")
+
+
+def get_fallback_provider(primary_provider_name: str) -> AIProvider | None:
+	"""Get the fallback AI provider, if configured in Chatbot Settings.
+
+	Returns None if no fallback is configured or if the fallback provider
+	is the same as the primary.
+
+	Args:
+		primary_provider_name: The primary provider name (OpenAI/Claude/Gemini).
+
+	Returns:
+		AIProvider instance or None.
+	"""
+	try:
+		settings = frappe.get_single("Chatbot Settings")
+		fallback_name = getattr(settings, "fallback_provider", None)
+		if not fallback_name or fallback_name == primary_provider_name:
+			return None
+
+		fallback_api_key = (
+			settings.get_password("fallback_api_key") if getattr(settings, "fallback_api_key", None) else None
+		)
+		if not fallback_api_key:
+			return None
+
+		resolved = {
+			"api_key": fallback_api_key,
+			"model": getattr(settings, "fallback_model", None) or DEFAULT_MODELS.get(fallback_name),
+			"temperature": settings.as_dict().get("temperature") or 0.7,
+			"max_tokens": settings.as_dict().get("max_tokens") or 4000,
+		}
+
+		if fallback_name == "OpenAI":
+			return OpenAIProvider(resolved)
+		elif fallback_name == "Claude":
+			return ClaudeProvider(resolved)
+		elif fallback_name == "Gemini":
+			return GeminiProvider(resolved)
+	except Exception:
+		pass
+
+	return None

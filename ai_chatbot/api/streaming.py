@@ -405,6 +405,14 @@ def _stream_with_tools(
 			return result
 		# Fall through to standard flow if orchestration returned None
 
+	# Phase 13D: Wrap provider with retry/fallback and loop guard
+	from ai_chatbot.core.resilience import LLMCallWithRetry, ToolCallLoopGuard
+	from ai_chatbot.utils.ai_providers import get_fallback_provider
+
+	fallback = get_fallback_provider(ai_provider)
+	retry_wrapper = LLMCallWithRetry(provider, fallback_provider=fallback)
+	loop_guard = ToolCallLoopGuard()
+
 	full_content = ""
 	all_tool_calls = []
 	all_tool_results = []
@@ -413,7 +421,7 @@ def _stream_with_tools(
 
 	for _round in range(max_tool_rounds):
 		round_content, round_tool_calls, _needs_followup, round_usage = _stream_single_round(
-			provider=provider,
+			retry_wrapper=retry_wrapper,
 			history=history,
 			tools=tools,
 			conversation_id=conversation_id,
@@ -477,6 +485,43 @@ def _stream_with_tools(
 
 		# Execute each tool and add results
 		for tc in round_tool_calls:
+			# Phase 13D: Detect duplicate tool calls
+			if loop_guard.is_stuck(tc["name"], tc["arguments"]):
+				from ai_chatbot.core.logger import log_warning
+
+				log_warning(
+					f"Tool call loop detected: {tc['name']} called "
+					f"{loop_guard.MAX_DUPLICATE_CALLS}+ times with same args",
+					conversation_id=conversation_id,
+				)
+				loop_error = {
+					"error": True,
+					"error_type": "loop_detected",
+					"message": f"Tool '{tc['name']}' has failed multiple times with the same arguments. Do not retry.",
+					"suggestion": "Stop calling this tool and tell the user what went wrong.",
+				}
+				all_tool_results.append(loop_error)
+
+				_publish(
+					"ai_chat_tool_result",
+					{
+						"conversation_id": conversation_id,
+						"stream_id": stream_id,
+						"tool_name": tc["name"],
+						"result": loop_error,
+					},
+					user=user,
+				)
+
+				history.append(
+					{
+						"role": "tool",
+						"content": json.dumps(loop_error),
+						"tool_call_id": tc["id"],
+					}
+				)
+				continue
+
 			tool_display = tc["name"].replace("_", " ").title()
 			_publish_process_step(conversation_id, stream_id, f"Executing {tool_display}...", user)
 
@@ -500,6 +545,7 @@ def _stream_with_tools(
 				)
 				result = {"error": str(e)}
 
+			loop_guard.record_call(tc["name"], tc["arguments"])
 			all_tool_results.append(result)
 
 			_publish(
@@ -525,8 +571,19 @@ def _stream_with_tools(
 
 		# Continue streaming with tool results in history
 	else:
-		# Max rounds reached
-		pass
+		# Max tool rounds reached — log and notify user
+		from ai_chatbot.core.logger import log_warning
+
+		log_warning(
+			f"Max tool rounds ({max_tool_rounds}) reached",
+			conversation_id=conversation_id,
+		)
+		_publish_process_step(
+			conversation_id,
+			stream_id,
+			"Reached maximum processing rounds. Finalizing response...",
+			user,
+		)
 
 	# Use real usage data from the provider when available; fall back to estimate
 	if total_prompt_tokens or total_completion_tokens:
@@ -545,8 +602,16 @@ def _stream_with_tools(
 	)
 
 
-def _stream_single_round(provider, history, tools, conversation_id, stream_id, user):
+def _stream_single_round(retry_wrapper, history, tools, conversation_id, stream_id, user):
 	"""Stream a single round of AI response.
+
+	Args:
+		retry_wrapper: LLMCallWithRetry instance (or provider for backward compat).
+		history: Conversation history.
+		tools: Tool schemas.
+		conversation_id: Conversation ID.
+		stream_id: Stream ID.
+		user: User for realtime publishing.
 
 	Returns:
 		tuple of (content, tool_calls, needs_followup, usage)
@@ -558,7 +623,16 @@ def _stream_single_round(provider, history, tools, conversation_id, stream_id, u
 	buffer = ""
 	usage = None
 
-	for event in provider.chat_completion_stream(history, tools=tools):
+	# Phase 13D: Use retry wrapper's call_stream for retry/fallback support.
+	# Fall back to direct provider call for backward compatibility.
+	from ai_chatbot.core.resilience import LLMCallWithRetry
+
+	if isinstance(retry_wrapper, LLMCallWithRetry):
+		stream_iter = retry_wrapper.call_stream(history, tools=tools)
+	else:
+		stream_iter = retry_wrapper.chat_completion_stream(history, tools=tools)
+
+	for event in stream_iter:
 		event_type = event.get("type")
 
 		if event_type == "token":

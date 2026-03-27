@@ -78,3 +78,27 @@ class InsufficientDataError(ChatbotError):
 			f"Need at least {required_months} months, but only {available_months} available.",
 			error_code="INSUFFICIENT_DATA",
 		)
+
+
+class ProviderAPIError(ProviderError):
+	"""Raised when an AI provider API call fails with a classifiable HTTP error.
+
+	Carries the HTTP status code and optional Retry-After value so the
+	resilience layer can decide whether to retry.
+	"""
+
+	def __init__(self, provider_name, status_code, message=None, retry_after=None, original_error=None):
+		self.status_code = status_code
+		self.retry_after = retry_after  # seconds (from Retry-After header)
+		super().__init__(provider_name, message=message, original_error=original_error)
+
+
+class CircuitBreakerOpenError(ChatbotError):
+	"""Raised when the circuit breaker is open for a provider."""
+
+	def __init__(self, provider_name):
+		self.provider_name = provider_name
+		super().__init__(
+			"The AI service is temporarily unavailable. Please try again in a few minutes.",
+			error_code="CIRCUIT_BREAKER_OPEN",
+		)

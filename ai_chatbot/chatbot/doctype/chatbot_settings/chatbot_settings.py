@@ -31,3 +31,10 @@ class ChatbotSettings(Document):
 	def on_update(self):
 		"""Called after document is saved."""
 		frappe.cache().delete_value("ai_chatbot_settings")
+
+		# Clear circuit breaker state for all providers when settings change
+		# (e.g. API key was corrected, provider was switched)
+		for provider in ("OpenAIProvider", "ClaudeProvider", "GeminiProvider"):
+			prefix = f"ai_chatbot:cb:{provider}"
+			for suffix in (":failures", ":open_until", ":probe"):
+				frappe.cache().delete_value(f"{prefix}{suffix}")

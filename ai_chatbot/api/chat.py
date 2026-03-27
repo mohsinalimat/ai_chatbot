@@ -279,6 +279,14 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 				return result
 			# Fall through to standard flow if orchestration returned None
 
+		# Phase 13D: Wrap provider with retry/fallback and loop guard
+		from ai_chatbot.core.resilience import LLMCallWithRetry, ToolCallLoopGuard
+		from ai_chatbot.utils.ai_providers import get_fallback_provider
+
+		fallback = get_fallback_provider(ai_provider)
+		retry_wrapper = LLMCallWithRetry(provider, fallback_provider=fallback)
+		loop_guard = ToolCallLoopGuard()
+
 		max_tool_rounds = 5
 
 		# Multi-round tool call loop
@@ -289,7 +297,7 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 		completion_tokens = 0
 
 		for _round in range(max_tool_rounds):
-			response = provider.chat_completion(history, tools=tools, stream=False)
+			response = retry_wrapper.call(history, tools=tools, stream=False)
 
 			round_content, tool_calls, round_prompt, round_completion = extract_response(
 				ai_provider, response
@@ -315,7 +323,31 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 
 			for i, tool_call in enumerate(tool_calls):
 				func_name, func_args = extract_tool_info(ai_provider, tool_call)
+
+				# Phase 13D: Detect duplicate tool calls (same name + same args)
+				if loop_guard.is_stuck(func_name, func_args):
+					log_warning(
+						f"Tool call loop detected: {func_name} called {loop_guard.MAX_DUPLICATE_CALLS}+ times with same args",
+						conversation_id=conversation.name,
+					)
+					loop_error = {
+						"error": True,
+						"error_type": "loop_detected",
+						"message": f"Tool '{func_name}' has failed multiple times with the same arguments. Do not retry.",
+						"suggestion": "Stop calling this tool and tell the user what went wrong.",
+					}
+					all_tool_results.append(loop_error)
+					history.append(
+						{
+							"role": "tool",
+							"content": json.dumps(loop_error),
+							"tool_call_id": tool_call.get("id", f"tool_{i}"),
+						}
+					)
+					continue
+
 				result = BaseTool.execute_tool(func_name, func_args)
+				loop_guard.record_call(func_name, func_args)
 				all_tool_results.append(result)
 
 				history.append(
@@ -572,11 +604,13 @@ def get_sample_prompts() -> dict:
 					output_type = cells[1].lower()
 					expected = cells[2] if len(cells) > 2 else ""
 					if prompt_text and prompt_text.lower() != "prompt":
-						current_category["prompts"].append({
-							"text": prompt_text,
-							"type": output_type,
-							"expected": expected,
-						})
+						current_category["prompts"].append(
+							{
+								"text": prompt_text,
+								"type": output_type,
+								"expected": expected,
+							}
+						)
 
 		# Parse @mention reference from the Tips section
 		mention_pattern = re.compile(r"`(@\w+)`")

@@ -235,7 +235,16 @@ def build_system_prompt_blocks(conversation_id: str | None = None, company: str 
 			"name or code — the system will auto-resolve item names to item codes.\n"
 			"8. When the user asks to create **multiple independent documents** (e.g. 'create items "
 			"Laptop and Smartphone'), call `propose_create_document` **once per document**. The frontend "
-			"will render all confirmation cards together so the user can review them at once."
+			"will render all confirmation cards together so the user can review them at once.\n"
+			"9. **Automatic prerequisite handling:** The system automatically detects missing master records "
+			"(Customer, Supplier, Items, UOMs) referenced in a document. The confirmation card shows "
+			"editable fields for any missing records so the user can review defaults before confirming. "
+			"When the user confirms, the system creates all missing prerequisites first, then creates "
+			"the main document. You do NOT need to check if a Customer/Item/UOM exists before calling "
+			"`propose_create_document` — just pass the values the user provided.\n"
+			"10. For submittable DocTypes (like Sales Order, Purchase Invoice), the confirmation card "
+			"shows three buttons: Cancel, Save Draft, and Submit. For non-submittable DocTypes "
+			"(like Lead, Item, Customer), it shows Cancel and Save."
 		)
 
 	# Response Language (per-conversation or global fallback)

@@ -20,6 +20,7 @@ import uuid
 import frappe
 
 from ai_chatbot.core.config import get_default_company
+from ai_chatbot.data.prerequisites import detect_prerequisites
 from ai_chatbot.data.validators import (
 	check_permission,
 	validate_child_table_items,
@@ -94,12 +95,23 @@ def propose_create_document(doctype, values, company=None):
 		labels = _get_field_labels(doctype, missing)
 		warnings.append(f"Missing required fields: {', '.join(labels)}")
 
-	# Link field validation
+	# Detect missing prerequisites (Customer, Supplier, Items, UOMs).
+	# This also fuzzy-resolves values in-place where possible.
+	resolved_company = values.get("company") or get_default_company(company)
+	prerequisites = detect_prerequisites(doctype, values, resolved_company)
+
+	# Collect names of all missing prerequisite values so we can filter
+	# them out of the link/child validation errors (they will be created).
+	prereq_values = _collect_prerequisite_values(prerequisites)
+
+	# Link field validation — filter out errors for prerequisite records
 	link_errors = validate_link_fields(doctype, values)
+	link_errors = [e for e in link_errors if not _is_prerequisite_error(e, prereq_values)]
 	errors.extend(link_errors)
 
-	# Child table validation (also auto-corrects fuzzy item_code matches)
+	# Child table validation — filter out prerequisite-related errors
 	child_errors = validate_child_table_items(doctype, values)
+	child_errors = [e for e in child_errors if not _is_prerequisite_error(e, prereq_values)]
 	errors.extend(child_errors)
 
 	# Build display preview
@@ -110,6 +122,8 @@ def propose_create_document(doctype, values, company=None):
 	is_submittable = bool(frappe.get_meta(doctype).is_submittable)
 
 	confirmation_id = str(uuid.uuid4())
+
+	has_prereqs = prerequisites.get("has_prerequisites", False)
 
 	payload = {
 		"confirmation_required": True,
@@ -122,16 +136,13 @@ def propose_create_document(doctype, values, company=None):
 		"child_tables": child_tables,
 		"previous_values": None,
 		"is_submittable": is_submittable,
+		"prerequisites": prerequisites if has_prereqs else None,
 		"warnings": warnings,
 		"errors": errors,
-		"message": (
-			f"Ready to create {doctype}. Please review the details in the confirmation card."
-			if not errors
-			else f"Cannot create {doctype}: {'; '.join(errors)}"
-		),
+		"message": _build_create_message(doctype, errors, prerequisites),
 	}
 
-	# Store in Redis (only if no blocking errors — user can still review)
+	# Store in Redis
 	_store_pending_confirmation(confirmation_id, payload)
 
 	return payload
@@ -618,3 +629,49 @@ def _get_field_labels(doctype, fieldnames):
 	meta = frappe.get_meta(doctype)
 	field_map = {df.fieldname: df.label or df.fieldname for df in meta.fields}
 	return [field_map.get(f, f) for f in fieldnames]
+
+
+def _collect_prerequisite_values(prerequisites):
+	"""Extract the set of all missing value strings from prerequisites.
+
+	Used to filter out validation errors that refer to records which
+	will be created as part of the confirmation flow.
+	"""
+	values = set()
+	if not prerequisites or not prerequisites.get("has_prerequisites"):
+		return values
+	for p in prerequisites.get("missing_parties", []):
+		values.add(p["value"])
+	for p in prerequisites.get("missing_items", []):
+		values.add(p["value"])
+	for p in prerequisites.get("missing_uoms", []):
+		values.add(p["value"])
+	return values
+
+
+def _is_prerequisite_error(error_str, prerequisite_values):
+	"""Check if a validation error refers to a known prerequisite value."""
+	for val in prerequisite_values:
+		if val in error_str:
+			return True
+	return False
+
+
+def _build_create_message(doctype, errors, prerequisites):
+	"""Build a user-facing message for a create proposal."""
+	if errors:
+		return f"Cannot create {doctype}: {'; '.join(errors)}"
+
+	parts = [f"Ready to create {doctype}."]
+
+	if prerequisites and prerequisites.get("has_prerequisites"):
+		prereq_items = []
+		for p in prerequisites.get("missing_parties", []):
+			prereq_items.append(f"{p['doctype']} '{p['value']}'")
+		for p in prerequisites.get("missing_items", []):
+			prereq_items.append(f"Item '{p['value']}'")
+		if prereq_items:
+			parts.append(f"Will also create: {', '.join(prereq_items)}.")
+
+	parts.append("Please review the details in the confirmation card.")
+	return " ".join(parts)

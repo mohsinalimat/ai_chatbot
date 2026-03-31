@@ -6,6 +6,12 @@
   Rendered inside ChatMessage when the AI proposes a write operation.
   Shows a structured preview of the action with Confirm/Cancel buttons.
 
+  Features:
+  - Prerequisites section: editable fields for missing party/items
+  - Smart button layout: Save | Cancel  OR  Save Draft | Submit | Cancel
+  - Created prerequisites listed in success state
+  - Undo countdown for reversible actions
+
   Visual states: pending, processing, success, declined, error
 -->
 <template>
@@ -94,6 +100,92 @@
         </div>
       </div>
 
+      <!-- Prerequisites Section (missing party/items to auto-create) -->
+      <div v-if="prerequisites?.has_prerequisites && state === 'pending'" class="mt-4 space-y-3">
+        <div class="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+          Records to Create
+        </div>
+
+        <!-- Missing Parties -->
+        <div
+          v-for="party in prerequisites.missing_parties"
+          :key="'party-' + party.value"
+          class="p-3 rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/10"
+        >
+          <div class="flex items-center gap-2 mb-2">
+            <UserPlus :size="14" class="text-amber-600 dark:text-amber-400" />
+            <span class="text-sm font-medium text-amber-800 dark:text-amber-300">
+              New {{ party.doctype }}: {{ party.value }}
+            </span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div
+              v-for="field in party.editable_fields"
+              :key="field.fieldname"
+              class="flex flex-col gap-0.5"
+            >
+              <label class="text-xs text-gray-500 dark:text-gray-400">{{ field.label }}</label>
+              <input
+                v-model="prereqForm.parties[party.value][field.fieldname]"
+                :placeholder="field.label"
+                class="px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-blue-400 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Missing Items -->
+        <div
+          v-if="prerequisites.missing_items?.length > 0"
+          class="p-3 rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/10"
+        >
+          <div class="flex items-center gap-2 mb-2">
+            <Package :size="14" class="text-amber-600 dark:text-amber-400" />
+            <span class="text-sm font-medium text-amber-800 dark:text-amber-300">
+              New Items ({{ prerequisites.missing_items.length }})
+            </span>
+          </div>
+
+          <div class="space-y-2">
+            <div
+              v-for="item in prerequisites.missing_items"
+              :key="'item-' + item.value"
+              class="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600"
+            >
+              <div class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                {{ item.value }}
+              </div>
+              <div class="flex items-center gap-3 flex-wrap">
+                <template v-for="field in item.editable_fields" :key="field.fieldname">
+                  <!-- Checkbox fields -->
+                  <label
+                    v-if="field.fieldtype === 'Check' && !isFieldHidden(item.value, field)"
+                    class="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="prereqForm.items[item.value]?.[field.fieldname]"
+                      @change="prereqForm.items[item.value][field.fieldname] = $event.target.checked ? 1 : 0"
+                      class="rounded w-3.5 h-3.5 text-blue-600"
+                    />
+                    {{ field.label }}
+                  </label>
+                  <!-- Text/Link fields -->
+                  <div v-else-if="field.fieldtype !== 'Check'" class="flex flex-col gap-0.5">
+                    <label class="text-xs text-gray-500 dark:text-gray-400">{{ field.label }}</label>
+                    <input
+                      v-model="prereqForm.items[item.value][field.fieldname]"
+                      :placeholder="field.label"
+                      class="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 w-28 focus:ring-1 focus:ring-blue-400 outline-none"
+                    />
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Warnings -->
       <div
         v-if="warnings.length && state === 'pending'"
@@ -117,20 +209,37 @@
       </div>
 
       <!-- Success result -->
-      <div v-if="state === 'success' && resultData" class="mt-3 p-2.5 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700">
-        <div class="flex items-center gap-1.5 text-sm text-green-800 dark:text-green-300">
-          <CheckCircle2 :size="14" class="flex-shrink-0" />
-          <span>{{ resultData.message || `${doctype} created successfully` }}</span>
-        </div>
-        <a
-          v-if="resultData.doc_url"
-          :href="resultData.doc_url"
-          target="_blank"
-          class="inline-flex items-center gap-1 mt-1.5 text-xs text-green-700 dark:text-green-400 hover:underline"
+      <div v-if="state === 'success' && resultData" class="mt-3">
+        <!-- Created prerequisites -->
+        <div
+          v-if="resultData.created_prerequisites?.length"
+          class="p-2.5 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 mb-2"
         >
-          <ExternalLink :size="12" />
-          Open {{ resultData.name || doctype }}
-        </a>
+          <div class="text-xs font-medium text-blue-800 dark:text-blue-300 mb-1">Auto-created:</div>
+          <div
+            v-for="(master, idx) in resultData.created_prerequisites"
+            :key="idx"
+            class="text-xs text-blue-700 dark:text-blue-400"
+          >
+            &bull; {{ master }}
+          </div>
+        </div>
+        <!-- Main document success -->
+        <div class="p-2.5 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700">
+          <div class="flex items-center gap-1.5 text-sm text-green-800 dark:text-green-300">
+            <CheckCircle2 :size="14" class="flex-shrink-0" />
+            <span>{{ resultData.message || `${doctype} created successfully` }}</span>
+          </div>
+          <a
+            v-if="resultData.doc_url"
+            :href="resultData.doc_url"
+            target="_blank"
+            class="inline-flex items-center gap-1 mt-1.5 text-xs text-green-700 dark:text-green-400 hover:underline"
+          >
+            <ExternalLink :size="12" />
+            Open {{ resultData.name || doctype }}
+          </a>
+        </div>
       </div>
 
       <!-- Error result -->
@@ -147,6 +256,7 @@
       v-if="state === 'pending' || state === 'processing'"
       class="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
     >
+      <!-- Cancel button (always present) -->
       <button
         :disabled="state === 'processing'"
         class="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -154,16 +264,42 @@
       >
         Cancel
       </button>
-      <button
-        :disabled="state === 'processing' || errors.length > 0"
-        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        :class="confirmButtonClass"
-        @click="handleConfirm"
-      >
-        <Loader2 v-if="state === 'processing'" :size="12" class="animate-spin" />
-        <component v-else :is="confirmButtonIcon" :size="12" />
-        {{ confirmButtonText }}
-      </button>
+
+      <!-- Submittable DocType: Save Draft + Submit buttons -->
+      <template v-if="isSubmittable && action === 'create'">
+        <button
+          :disabled="state === 'processing' || errors.length > 0"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-700 border border-blue-300 dark:border-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="handleConfirm(false)"
+        >
+          <Loader2 v-if="state === 'processing' && !submitMode" :size="12" class="animate-spin" />
+          <FilePlus v-else :size="12" />
+          Save Draft
+        </button>
+        <button
+          :disabled="state === 'processing' || errors.length > 0"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          @click="handleConfirm(true)"
+        >
+          <Loader2 v-if="state === 'processing' && submitMode" :size="12" class="animate-spin" />
+          <FileCheck v-else :size="12" />
+          Submit
+        </button>
+      </template>
+
+      <!-- Non-submittable DocType: single button -->
+      <template v-else>
+        <button
+          :disabled="state === 'processing' || errors.length > 0"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="confirmButtonClass"
+          @click="handleConfirm(false)"
+        >
+          <Loader2 v-if="state === 'processing'" :size="12" class="animate-spin" />
+          <component v-else :is="confirmButtonIcon" :size="12" />
+          {{ confirmButtonText }}
+        </button>
+      </template>
     </div>
 
     <!-- Undo footer (success state with undo available) -->
@@ -194,11 +330,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import {
   FilePlus, FileEdit, FileCheck, FileX2,
   AlertTriangle, XCircle, CheckCircle2, ExternalLink,
-  Loader2, Undo2
+  Loader2, Undo2, UserPlus, Package
 } from 'lucide-vue-next'
 import { chatAPI } from '../utils/api'
 
@@ -212,6 +348,7 @@ const props = defineProps({
   warnings: { type: Array, default: () => [] },
   errors: { type: Array, default: () => [] },
   isSubmittable: { type: Boolean, default: false },
+  prerequisites: { type: Object, default: null },
   // Pre-populated from persisted confirmation_state (page reload)
   initialState: { type: String, default: 'pending' },
   initialResult: { type: Object, default: null },
@@ -229,6 +366,39 @@ const undoToken = ref(props.initialUndoToken)
 const undoExpires = ref(props.initialUndoExpires)
 const undoProcessing = ref(false)
 const undoExecuted = ref(false)
+const submitMode = ref(false)
+
+// Prerequisite form data — initialized from editable_fields[].default
+const prereqForm = reactive({ parties: {}, items: {} })
+
+function initPrerequisiteForm() {
+  const p = props.prerequisites
+  if (!p?.has_prerequisites) return
+
+  for (const party of (p.missing_parties || [])) {
+    const fields = {}
+    for (const f of party.editable_fields) {
+      fields[f.fieldname] = f.default ?? ''
+    }
+    prereqForm.parties[party.value] = fields
+  }
+
+  for (const item of (p.missing_items || [])) {
+    const fields = {}
+    for (const f of item.editable_fields) {
+      fields[f.fieldname] = f.default ?? ''
+    }
+    prereqForm.items[item.value] = fields
+  }
+}
+
+// Check if a field should be hidden based on conditional logic
+// e.g., hide "Fixed Asset" when "Stock Item" is checked
+function isFieldHidden(itemValue, field) {
+  if (!field.hidden_when) return false
+  const depField = field.hidden_when
+  return !!prereqForm.items[itemValue]?.[depField]
+}
 
 // Countdown timer for undo
 const undoSecondsLeft = ref(0)
@@ -260,6 +430,7 @@ function startUndoCountdown() {
 }
 
 onMounted(() => {
+  initPrerequisiteForm()
   if (state.value === 'success' && undoToken.value) {
     startUndoCountdown()
   }
@@ -297,7 +468,7 @@ const headerText = computed(() => {
 const confirmButtonText = computed(() => {
   if (state.value === 'processing') return 'Processing...'
   switch (props.action) {
-    case 'create': return props.isSubmittable ? 'Create Draft' : 'Save'
+    case 'create': return 'Save'
     case 'update': return 'Update'
     case 'submit': return 'Submit'
     case 'cancel': return 'Cancel Document'
@@ -373,12 +544,23 @@ function formatValue(value, fieldtype) {
 }
 
 // Handlers
-async function handleConfirm() {
+async function handleConfirm(submitAfterCreate = false) {
   if (state.value !== 'pending' || props.errors.length > 0) return
   state.value = 'processing'
+  submitMode.value = submitAfterCreate
 
   try {
-    const result = await chatAPI.confirmAction(props.confirmationId)
+    // Build user_overrides from prerequisite form data
+    const userOverrides = props.prerequisites?.has_prerequisites
+      ? JSON.stringify(prereqForm)
+      : null
+
+    const result = await chatAPI.confirmAction(
+      props.confirmationId,
+      userOverrides,
+      submitAfterCreate
+    )
+
     if (result.success) {
       state.value = 'success'
       resultData.value = result

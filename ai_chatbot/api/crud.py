@@ -24,6 +24,7 @@ from ai_chatbot.data.operations import (
 	submit_document,
 	update_document,
 )
+from ai_chatbot.data.prerequisites import execute_prerequisites
 from ai_chatbot.data.validators import check_permission
 from ai_chatbot.tools.crud import (
 	delete_pending_confirmation,
@@ -36,18 +37,34 @@ _UNDO_TTL = 300  # 5 minutes
 
 
 @frappe.whitelist()
-def confirm_action(confirmation_id: str) -> dict:
+def confirm_action(
+	confirmation_id: str,
+	user_overrides: str | None = None,
+	submit_after_create: bool = False,
+) -> dict:
 	"""Execute a previously proposed write action after user confirmation.
 
 	Loads the pending confirmation from Redis, re-validates permissions,
 	executes the action, stores undo metadata, and returns the result.
 
+	For ``create`` actions, also handles:
+	- **Prerequisites**: creates missing Customer/Supplier, Items, UOMs
+	  before the main document (with user-edited field overrides).
+	- **Submit-after-create**: if the user clicked "Submit" instead of
+	  "Save Draft", the document is created then immediately submitted.
+
 	Args:
 		confirmation_id: UUID of the pending confirmation.
+		user_overrides: JSON string with user-edited prerequisite fields.
+		submit_after_create: If True, submit the document after creating it.
 
 	Returns:
 		dict with success status, document info, and undo token.
 	"""
+	# Frappe may pass submit_after_create as a string from the POST body
+	if isinstance(submit_after_create, str):
+		submit_after_create = submit_after_create.lower() in ("true", "1")
+
 	try:
 		payload = load_pending_confirmation(confirmation_id)
 		if not payload:
@@ -72,15 +89,53 @@ def confirm_action(confirmation_id: str) -> dict:
 		result = None
 		undo_token = None
 		undo_expires = None
+		created_prerequisites = []
 
 		if action == "create":
 			# Re-check create permission
 			if not check_permission(doctype, "create"):
 				return {"success": False, "error": f"You no longer have permission to create {doctype}"}
 
+			# Execute prerequisites (missing parties, items, UOMs) if present
+			prerequisites = payload.get("prerequisites")
+			if prerequisites and prerequisites.get("has_prerequisites"):
+				overrides = {}
+				if user_overrides:
+					overrides = json.loads(user_overrides) if isinstance(user_overrides, str) else user_overrides
+				_merge_overrides_into_prerequisites(prerequisites, overrides)
+
+				prereq_result = execute_prerequisites(prerequisites, values.get("company"))
+				if not prereq_result["success"]:
+					return {
+						"success": False,
+						"error": f"Failed to create prerequisites: {'; '.join(prereq_result['errors'])}",
+					}
+
+				# Fix up document values with actual created record names
+				_apply_name_map(values, prereq_result["name_map"])
+				created_prerequisites = prereq_result["created"]
+
+			# Create the main document
 			result = create_document(doctype, values)
-			undo_token = _store_undo_metadata(action, doctype, result["name"], previous_values=None)
-			undo_expires = _undo_expiry_iso()
+
+			# Optionally submit after creation
+			if submit_after_create and result.get("name"):
+				try:
+					submit_document(doctype, result["name"])
+					result["message"] = f"{doctype} '{result['name']}' created and submitted successfully."
+					result["submitted"] = True
+				except Exception as e:
+					# Created OK but submit failed — inform user
+					result["message"] = (
+						f"{doctype} '{result['name']}' saved as Draft. "
+						f"Submit failed: {e!s}"
+					)
+					result["submitted"] = False
+
+			# Undo is only available for draft documents (not submitted)
+			if not submit_after_create:
+				undo_token = _store_undo_metadata(action, doctype, result["name"], previous_values=None)
+				undo_expires = _undo_expiry_iso()
 
 		elif action == "update":
 			if not name:
@@ -136,7 +191,7 @@ def confirm_action(confirmation_id: str) -> dict:
 			user=frappe.session.user,
 		)
 
-		return {
+		response = {
 			"success": True,
 			"action": action,
 			"doctype": doctype,
@@ -146,6 +201,11 @@ def confirm_action(confirmation_id: str) -> dict:
 			"undo_token": undo_token,
 			"undo_expires": undo_expires,
 		}
+
+		if created_prerequisites:
+			response["created_prerequisites"] = created_prerequisites
+
+		return response
 
 	except Exception as e:
 		log_error(f"CRUD confirm_action error: {e!s}", title="CRUD Confirm")
@@ -300,6 +360,55 @@ def _undo_expiry_iso():
 	from frappe.utils import add_to_date, now_datetime
 
 	return add_to_date(now_datetime(), minutes=5).isoformat()
+
+
+def _merge_overrides_into_prerequisites(prerequisites, overrides):
+	"""Merge user-provided field values from the frontend into prerequisites.
+
+	The *overrides* dict has the shape::
+
+		{
+			"parties": {"Samson System": {"default_currency": "USD", ...}},
+			"items":   {"Wireless Keyboard": {"is_stock_item": 1, ...}}
+		}
+	"""
+	party_overrides = overrides.get("parties", {})
+	for party in prerequisites.get("missing_parties", []):
+		user_vals = party_overrides.get(party["value"])
+		if user_vals:
+			party["user_overrides"] = user_vals
+
+	item_overrides = overrides.get("items", {})
+	for item in prerequisites.get("missing_items", []):
+		user_vals = item_overrides.get(item["value"])
+		if user_vals:
+			item["user_overrides"] = user_vals
+
+
+def _apply_name_map(values, name_map):
+	"""Fix up document values after prerequisites are created.
+
+	ERPNext auto-naming might produce a ``name`` different from the
+	user-provided value (e.g. naming series).  The *name_map* maps
+	``field → {user_value → actual_name}``.
+
+	Mutates *values* in-place.
+	"""
+	for field, mapping in name_map.items():
+		# Top-level field (e.g. customer)
+		if field in values:
+			old = values[field]
+			if old in mapping:
+				values[field] = mapping[old]
+
+		# Child table rows (e.g. item_code in items)
+		for _key, val in values.items():
+			if isinstance(val, list):
+				for row in val:
+					if isinstance(row, dict) and field in row:
+						old = row[field]
+						if old in mapping:
+							row[field] = mapping[old]
 
 
 def _update_confirmation_state(confirmation_id, state, result=None, undo_token=None, undo_expires=None):

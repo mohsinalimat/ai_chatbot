@@ -290,13 +290,17 @@ class ChatAPI {
   // ── Phase 13B: CRUD Confirmation API methods ──
 
   /**
-   * Confirm a proposed CRUD action (user clicked "Create Draft" / "Update" / etc.).
+   * Confirm a proposed CRUD action (user clicked "Save" / "Save Draft" / "Submit" / etc.).
    * @param {string} confirmationId - The confirmation UUID from the propose_* tool result
+   * @param {string|null} userOverrides - JSON string with user-edited prerequisite fields
+   * @param {boolean} submitAfterCreate - If true, submit the document after creating it
    * @returns {Promise<Object>} Result with success, name, doc_url, undo_token
    */
-  async confirmAction(confirmationId) {
+  async confirmAction(confirmationId, userOverrides = null, submitAfterCreate = false) {
     return this.requestEndpoint(CRUD_API_BASE, 'confirm_action', {
       confirmation_id: confirmationId,
+      user_overrides: userOverrides,
+      submit_after_create: submitAfterCreate,
     })
   }
 

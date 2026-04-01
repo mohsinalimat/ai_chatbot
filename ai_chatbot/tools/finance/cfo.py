@@ -7,6 +7,13 @@ Composite analysis tools that aggregate data from ERPNext standard reports.
 Phase 12B-ext: Refactored to source all data from ERPNext report execute()
 functions instead of custom frappe.qb queries, ensuring data consistency
 with ERPNext's own reports.
+
+Phase 19: When "Use Financial Report Engine" is enabled in Chatbot Settings,
+CFO dashboard helpers now route through the template-engine path for data
+consistency with user-facing report tools.  Extraction uses a fallback chain:
+  1. report_summary (standard path — always has this)
+  2. Row-level KPI extraction from report data (works for both paths)
+  3. Standard path as last resort
 """
 
 from __future__ import annotations
@@ -23,8 +30,10 @@ from ai_chatbot.tools.common import primary
 from ai_chatbot.tools.registry import register_tool
 from ai_chatbot.tools.reports._base import (
 	build_financial_filters,
+	extract_kpis_from_report_data,
 	get_fiscal_year_name,
 	get_report_data,
+	is_fre_enabled,
 )
 
 # ═══════════════════════════════════════════════════════════════════
@@ -33,26 +42,48 @@ from ai_chatbot.tools.reports._base import (
 
 
 def _pnl_totals(company: str, from_date: str, to_date: str) -> dict:
-	"""Extract income, expense, net profit from P&L report_summary.
+	"""Extract income, expense, net profit from P&L report.
 
-	Always uses the standard code path (no report_type) to guarantee
-	report_summary is present — the FinancialReportEngine path returns
-	a 4-tuple without report_summary.
+	Fallback chain (Phase 19 — FRE consistency):
+	  1. If FRE enabled → run with report_type to use template path;
+	     extract KPIs from data rows (report_summary is absent on this path).
+	  2. If FRE disabled OR template path returns no data → run standard path
+	     and extract from report_summary.
 	"""
-	filters = build_financial_filters(
-		company=company,
-		from_date=from_date,
-		to_date=to_date,
-		periodicity="Yearly",
-	)
+	use_fre = is_fre_enabled()
 
 	from erpnext.accounts.report.profit_and_loss_statement.profit_and_loss_statement import (
 		execute,
 	)
 
-	result = get_report_data(execute, filters)
-	summary = result.get("report_summary") or []
+	# ── Attempt 1: FRE template path ──
+	if use_fre:
+		fre_filters = build_financial_filters(
+			company=company,
+			from_date=from_date,
+			to_date=to_date,
+			periodicity="Yearly",
+			report_type="profit_and_loss",
+		)
+		fre_result = get_report_data(execute, fre_filters)
 
+		# If the template path returned data, extract from rows
+		if fre_result.get("data"):
+			totals = _extract_pnl_from_data(fre_result["data"])
+			if totals["income"] or totals["expense"] or totals["net_profit"]:
+				return totals
+
+	# ── Attempt 2: Standard path (report_summary) ──
+	std_filters = build_financial_filters(
+		company=company,
+		from_date=from_date,
+		to_date=to_date,
+		periodicity="Yearly",
+	)
+	result = get_report_data(execute, std_filters)
+
+	# Try report_summary first
+	summary = result.get("report_summary") or []
 	totals = {"income": 0, "expense": 0, "net_profit": 0}
 	for item in summary:
 		label = (item.get("label") or "").lower()
@@ -63,7 +94,50 @@ def _pnl_totals(company: str, from_date: str, to_date: str) -> dict:
 			totals["expense"] = value
 		elif "profit" in label or "loss" in label:
 			totals["net_profit"] = value
+
+	if totals["income"] or totals["expense"] or totals["net_profit"]:
+		return totals
+
+	# Last resort: extract from data rows (standard path data)
+	if result.get("data"):
+		return _extract_pnl_from_data(result["data"])
+
 	return totals
+
+
+# Label candidates for P&L KPI extraction — matches both standard and
+# template-engine row labels regardless of user customisation.
+_PNL_KPI_MAP = {
+	"income": [
+		"total income",
+		"income (total)",
+		"total revenue",
+		"gross income",
+	],
+	"expense": [
+		"total expense",
+		"expense (total)",
+		"total expenditure",
+		"gross expense",
+	],
+	"net_profit": [
+		"net profit",
+		"profit for the year",
+		"net loss",
+		"profit (loss)",
+		"net income",
+	],
+}
+
+
+def _extract_pnl_from_data(data: list[dict]) -> dict:
+	"""Extract income, expense, net profit from P&L data rows.
+
+	Uses label matching with multiple candidates per KPI so it works
+	regardless of whether the data comes from the standard path or
+	the FinancialReportEngine template path.
+	"""
+	return extract_kpis_from_report_data(data, _PNL_KPI_MAP)
 
 
 def _ar_total(company: str) -> float:
@@ -105,24 +179,45 @@ def _ap_total(company: str) -> float:
 
 
 def _balance_sheet_totals(company: str, from_date: str, to_date: str) -> dict:
-	"""Extract asset, liability, equity totals from Balance Sheet report_summary.
+	"""Extract asset, liability, equity totals from Balance Sheet report.
 
-	Always uses the standard code path (no report_type) to guarantee
-	report_summary is present — the FinancialReportEngine path returns
-	a 4-tuple without report_summary.
+	Fallback chain (Phase 19 — FRE consistency):
+	  1. If FRE enabled → run with report_type to use template path;
+	     extract KPIs from data rows.
+	  2. If FRE disabled OR template path returns no data → run standard path
+	     and extract from report_summary.
 	"""
-	filters = build_financial_filters(
+	use_fre = is_fre_enabled()
+
+	from erpnext.accounts.report.balance_sheet.balance_sheet import execute
+
+	# ── Attempt 1: FRE template path ──
+	if use_fre:
+		fre_filters = build_financial_filters(
+			company=company,
+			from_date=from_date,
+			to_date=to_date,
+			periodicity="Yearly",
+			report_type="balance_sheet",
+		)
+		fre_result = get_report_data(execute, fre_filters)
+
+		if fre_result.get("data"):
+			totals = _extract_bs_from_data(fre_result["data"])
+			if totals["total_asset"] or totals["total_liability"] or totals["total_equity"]:
+				return totals
+
+	# ── Attempt 2: Standard path (report_summary) ──
+	std_filters = build_financial_filters(
 		company=company,
 		from_date=from_date,
 		to_date=to_date,
 		periodicity="Yearly",
 	)
+	result = get_report_data(execute, std_filters)
 
-	from erpnext.accounts.report.balance_sheet.balance_sheet import execute
-
-	result = get_report_data(execute, filters)
+	# Try report_summary first
 	summary = result.get("report_summary") or []
-
 	totals = {"total_asset": 0, "total_liability": 0, "total_equity": 0}
 	for item in summary:
 		label = (item.get("label") or "").lower()
@@ -133,7 +228,41 @@ def _balance_sheet_totals(company: str, from_date: str, to_date: str) -> dict:
 			totals["total_liability"] = value
 		elif "equity" in label:
 			totals["total_equity"] = value
+
+	if totals["total_asset"] or totals["total_liability"] or totals["total_equity"]:
+		return totals
+
+	# Last resort: extract from data rows (standard path data)
+	if result.get("data"):
+		return _extract_bs_from_data(result["data"])
+
 	return totals
+
+
+# Label candidates for Balance Sheet KPI extraction.
+_BS_KPI_MAP = {
+	"total_asset": [
+		"total asset",
+		"total assets",
+		"assets (total)",
+	],
+	"total_liability": [
+		"total liability",
+		"total liabilities",
+		"liabilities (total)",
+	],
+	"total_equity": [
+		"total equity",
+		"equity (total)",
+		"shareholder",
+		"stockholder",
+	],
+}
+
+
+def _extract_bs_from_data(data: list[dict]) -> dict:
+	"""Extract asset, liability, equity from Balance Sheet data rows."""
+	return extract_kpis_from_report_data(data, _BS_KPI_MAP)
 
 
 def _cash_position(company: str | list) -> float:
@@ -633,7 +762,13 @@ def get_cfo_dashboard(from_date=None, to_date=None, company=None):
 	doctypes=["GL Entry"],
 )
 def get_monthly_comparison(months=6, company=None):
-	"""Month-over-month revenue, expenses, and net profit from P&L report."""
+	"""Month-over-month revenue, expenses, and net profit from P&L report.
+
+	Phase 19: Routes through the FinancialReportEngine template path when
+	the toggle is enabled, ensuring monthly data matches the user-facing
+	P&L report.  The extraction logic works with both standard and
+	template-engine row formats.
+	"""
 	company = get_company_filter(company)
 	comp = primary(company)
 	months = min(months or 6, 12)
@@ -643,12 +778,14 @@ def get_monthly_comparison(months=6, company=None):
 	start_date = str(get_first_day(add_months(nowdate(), -months + 1)))
 	end_date = str(get_last_day(nowdate()))
 
-	# Run P&L with monthly periodicity for the requested period
+	# Build filters — include report_type when FRE is enabled
+	use_fre = is_fre_enabled()
 	filters = build_financial_filters(
 		company=comp,
 		from_date=start_date,
 		to_date=end_date,
 		periodicity="Monthly",
+		report_type="profit_and_loss" if use_fre else None,
 	)
 
 	from erpnext.accounts.report.profit_and_loss_statement.profit_and_loss_statement import (
@@ -659,48 +796,11 @@ def get_monthly_comparison(months=6, company=None):
 	data = result.get("data", [])
 	columns = result.get("columns", [])
 
-	# Extract period keys from columns (skip 'account' and 'total' columns)
-	period_keys = []
-	for col in columns:
-		fn_name = col.get("fieldname", "")
-		if fn_name not in ("account", "account_name", "total", "currency", "") and col.get("fieldtype") in (
-			"Currency",
-			"Float",
-		):
-			period_keys.append({"key": fn_name, "label": col.get("label", fn_name)})
+	# Extract period keys from columns (skip metadata columns)
+	period_keys = _extract_period_keys(columns)
 
-	# Find income and expense totals from report data
-	# P&L data has rows with indent levels; total rows have specific markers
-	income_total = {}
-	expense_total = {}
-	current_section = None
-
-	for row in data:
-		account = row.get("account", "") or row.get("account_name", "")
-		account_lower = account.lower() if account else ""
-
-		# Detect section headers
-		if "income" in account_lower and not row.get("parent_account"):
-			current_section = "income"
-		elif "expense" in account_lower and not row.get("parent_account"):
-			current_section = "expense"
-
-		# The section total row is the one with the highest total at indent=0
-		# or the last row before section switch. Use a simpler approach:
-		# look for rows that are the root group total for Income/Expense
-		if row.get("is_group") and not row.get("parent_account"):
-			section_totals = income_total if current_section == "income" else expense_total
-			for pk in period_keys:
-				section_totals[pk["key"]] = flt(row.get(pk["key"], 0))
-
-	# If the above heuristic didn't work (different P&L structures), try reading
-	# the "Net Profit" row or "Profit for the year" row
-	net_profit_row = {}
-	for row in reversed(data):
-		account = (row.get("account", "") or row.get("account_name", "") or "").lower()
-		if "net profit" in account or "profit for" in account:
-			net_profit_row = row
-			break
+	# Extract income/expense/net_profit totals per period from data rows
+	income_total, expense_total, net_profit_row = _extract_monthly_totals(data, period_keys)
 
 	# Build monthly comparison data
 	monthly = []
@@ -756,3 +856,102 @@ def get_monthly_comparison(months=6, company=None):
 		),
 	}
 	return build_currency_response(result, comp)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Monthly comparison helpers
+# ═══════════════════════════════════════════════════════════════════
+
+# Column fieldnames that are metadata, not period values.
+_MONTHLY_META_COLUMNS = frozenset(
+	{
+		"account",
+		"account_name",
+		"acc_name",
+		"acc_number",
+		"total",
+		"currency",
+		"",
+	}
+)
+
+
+def _extract_period_keys(columns: list[dict]) -> list[dict]:
+	"""Extract period column keys from report columns.
+
+	Works for both standard and template-engine column formats.
+	Returns list of {key, label} dicts for each period column.
+	"""
+	period_keys = []
+	for col in columns:
+		fn_name = col.get("fieldname", "")
+		if fn_name in _MONTHLY_META_COLUMNS:
+			continue
+		fieldtype = col.get("fieldtype", "")
+		if fieldtype in ("Currency", "Float"):
+			period_keys.append({"key": fn_name, "label": col.get("label", fn_name)})
+	return period_keys
+
+
+def _extract_monthly_totals(
+	data: list[dict],
+	period_keys: list[dict],
+) -> tuple[dict, dict, dict]:
+	"""Extract income/expense totals and net profit per period from P&L rows.
+
+	Works with both standard-path and template-engine-path row formats:
+	- Standard path: uses ``is_group`` + ``parent_account`` to find totals
+	- Template path: uses ``bold`` + ``indent`` + label matching
+
+	Returns:
+		(income_total, expense_total, net_profit_row) — dicts mapping
+		period key → value.
+	"""
+	income_total: dict[str, float] = {}
+	expense_total: dict[str, float] = {}
+	net_profit_row: dict[str, float] = {}
+	current_section: str | None = None
+
+	# Label candidates (lowercase) for section detection
+	income_labels = ("income", "revenue")
+	expense_labels = ("expense", "expenditure", "cost")
+	net_profit_labels = ("net profit", "profit for the year", "profit (loss)", "net income")
+
+	for row in data:
+		account = (row.get("account") or row.get("account_name") or "").strip()
+		account_lower = account.lower()
+		if not account_lower:
+			continue
+
+		indent = row.get("indent", 0)
+		is_bold = bool(row.get("bold"))
+
+		# ── Section header detection ──
+		# Standard path: root-level group accounts (is_group=True, no parent_account)
+		# Template path: bold rows at indent=0 containing section keywords
+		is_root_row = row.get("is_group") and not row.get("parent_account")
+		is_template_header = is_bold and indent == 0
+
+		if is_root_row or is_template_header:
+			if any(lbl in account_lower for lbl in income_labels):
+				current_section = "income"
+			elif any(lbl in account_lower for lbl in expense_labels):
+				current_section = "expense"
+
+		# ── Total row extraction ──
+		# Capture the section total values: root-level group or bold total row
+		if is_root_row or is_template_header:
+			target = income_total if current_section == "income" else expense_total
+			for pk in period_keys:
+				val = row.get(pk["key"])
+				if val is not None and isinstance(val, (int, float)) and not isinstance(val, bool):
+					target[pk["key"]] = flt(val)
+
+		# ── Net profit row ──
+		if any(lbl in account_lower for lbl in net_profit_labels):
+			for pk in period_keys:
+				val = row.get(pk["key"])
+				if val is not None and isinstance(val, (int, float)) and not isinstance(val, bool):
+					net_profit_row[pk["key"]] = flt(val)
+
+	return income_total, expense_total, net_profit_row

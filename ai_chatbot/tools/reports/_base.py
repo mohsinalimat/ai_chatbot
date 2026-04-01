@@ -605,3 +605,138 @@ def build_report_response(
 			response["echart_option"] = echart
 
 	return build_currency_response(response, primary(company))
+
+
+# ═══════════════════════════════════════════════════════════════════
+# FinancialReportEngine (FRE) data extraction helpers
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _row_value(row: dict) -> float:
+	"""Extract the primary monetary value from a report data row.
+
+	Handles both standard-path and template-engine-path row formats:
+
+	- **Standard path:** Value is in ``row["total"]``.
+	- **Template path (FRE):** Value is in a period-named column
+	  (e.g. ``row["mar_2026"]``).  There is no ``total`` key.
+	  We pick the *last* numeric (non-metadata) column value.
+
+	Also handles the Python quirk that ``bool`` is a subclass of
+	``int``, so ``bold=True`` must not be interpreted as a monetary 1.
+
+	Args:
+		row: A single data row dict from a report result.
+
+	Returns:
+		The extracted float value.
+	"""
+	# Prefer explicit "total" column (standard path)
+	total = row.get("total")
+	if total is not None and isinstance(total, (int, float)) and not isinstance(total, bool):
+		return flt(total)
+
+	# Template-engine path: find the last numeric period column.
+	# Skip known metadata keys.
+	_META_KEYS = frozenset(
+		{
+			"account",
+			"account_name",
+			"acc_name",
+			"acc_number",
+			"currency",
+			"indent",
+			"parent_account",
+			"is_group",
+			"opening_balance",
+			"period_start_date",
+			"period_end_date",
+			"total",
+			"bold",
+			"italic",
+			"is_detail",
+			"is_blank_line",
+			"warn_if_negative",
+			"fieldtype",
+			"color",
+			"account_filters",
+			"_segment_info",
+			"child_accounts",
+			"prefix",
+		}
+	)
+
+	last_value = 0.0
+	for key, val in row.items():
+		if key in _META_KEYS:
+			continue
+		if isinstance(val, bool):
+			continue
+		if isinstance(val, (int, float)):
+			last_value = flt(val)
+
+	return last_value
+
+
+def extract_kpis_from_report_data(
+	data: list[dict],
+	kpi_map: dict[str, list[str]],
+) -> dict[str, float]:
+	"""Extract KPI values from report data rows using label matching.
+
+	Scans rows for matches against multiple candidate labels for each
+	KPI.  Matching is case-insensitive and uses substring containment.
+	Priority: bold rows are preferred over non-bold for the same KPI.
+
+	This works for *both* standard-path and template-engine-path data
+	because the row identification uses the ``account`` / ``account_name``
+	fields (always present in both paths).
+
+	Args:
+		data: Report data rows (from ``get_report_data()``).
+		kpi_map: Mapping of KPI name → list of candidate label substrings.
+			Example::
+
+	                        {
+	                            "income": ["total income", "income (total)"],
+	                            "expense": ["total expense", "expense (total)"],
+	                            "net_profit": ["net profit", "profit for the year"],
+	                        }
+
+	Returns:
+		Dict mapping KPI name → extracted float value.
+	"""
+	result = {kpi: 0.0 for kpi in kpi_map}
+	# Track whether we matched a bold row for each KPI (preferred)
+	matched_bold = {kpi: False for kpi in kpi_map}
+
+	for row in data:
+		account = (row.get("account") or row.get("account_name") or "").lower().strip()
+		if not account:
+			continue
+
+		is_bold = bool(row.get("bold"))
+		value = _row_value(row)
+
+		for kpi, candidates in kpi_map.items():
+			for candidate in candidates:
+				if candidate in account:
+					# Prefer bold rows (total rows) over non-bold
+					if not matched_bold[kpi] or is_bold:
+						result[kpi] = value
+						matched_bold[kpi] = is_bold
+					break
+
+	return result
+
+
+def is_fre_enabled() -> bool:
+	"""Check whether the FinancialReportEngine toggle is enabled in Chatbot Settings.
+
+	Returns:
+		True if 'use_financial_report_engine' is checked in settings.
+	"""
+	from ai_chatbot.core.config import get_chatbot_settings
+
+	settings = get_chatbot_settings()
+	return bool(settings.use_financial_report_engine)

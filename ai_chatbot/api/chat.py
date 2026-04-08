@@ -17,13 +17,18 @@ from ai_chatbot.core.prompts import build_system_prompt
 from ai_chatbot.core.token_optimizer import optimize_history
 from ai_chatbot.core.token_tracker import estimate_cost, track_token_usage
 from ai_chatbot.tools.base import BaseTool, get_tools_for_message
-from ai_chatbot.utils.ai_providers import get_ai_provider
+from ai_chatbot.utils.ai_providers import get_ai_provider, get_chatbot_settings_ai_provider
 
 
 @frappe.whitelist()
 def create_conversation(title: str, ai_provider: str = "OpenAI") -> dict:
-	"""Create a new chat conversation"""
+	"""Create a new chat conversation.
+
+	Persists ``ai_provider`` from Chatbot Settings so it matches the backend
+	endpoint used for messages (``ai_provider`` request arg is ignored).
+	"""
 	try:
+		ai_provider = get_chatbot_settings_ai_provider()
 		conversation = frappe.get_doc(
 			{
 				"doctype": "Chatbot Conversation",
@@ -225,8 +230,10 @@ def send_message(
 		system_prompt = build_system_prompt(conversation_id=conversation_id)
 		system_msg = {"role": "system", "content": system_prompt}
 
+		ai_provider = get_chatbot_settings_ai_provider()
+
 		# Attach prompt blocks for Claude prompt caching
-		if conversation.ai_provider == "Claude":
+		if ai_provider == "Claude":
 			from ai_chatbot.core.prompts import build_system_prompt_blocks
 
 			system_msg["_prompt_blocks"] = build_system_prompt_blocks(conversation_id=conversation_id)
@@ -237,11 +244,11 @@ def send_message(
 		history = optimize_history(
 			history,
 			conversation_id=conversation_id,
-			provider_name=conversation.ai_provider,
+			provider_name=ai_provider,
 		)
 
 		# Get AI provider
-		provider = get_ai_provider(conversation.ai_provider)
+		provider = get_ai_provider(ai_provider)
 
 		# Route to relevant tool subset (Phase 12A)
 		tools, routing = get_tools_for_message(message, history)
@@ -265,7 +272,7 @@ def send_message(
 def generate_ai_response(conversation, provider, history, tools) -> dict:
 	"""Generate non-streaming AI response with provider-agnostic parsing."""
 	try:
-		ai_provider = conversation.ai_provider
+		ai_provider = get_chatbot_settings_ai_provider()
 
 		# Check if agent orchestration should handle this query
 		from ai_chatbot.ai.agents.orchestrator import run_orchestrated, should_orchestrate

@@ -4,7 +4,7 @@ authors = [
     { name = "Sanjay Kumar", email = "sanjay.kumar001@gmail.com"}
 ]
 description = "Intelligent AI Chatbot with ERPNext Integration"
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.10,<3.15"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
@@ -23,7 +23,7 @@ build-backend = "flit_core.buildapi"
 
 [tool.ruff]
 line-length = 110
-target-version = "py313"  # py314 causes ruff 0.15.0 to strip except-clause parentheses (ruff bug)
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [

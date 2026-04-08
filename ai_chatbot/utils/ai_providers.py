@@ -721,6 +721,21 @@ class ClaudeProvider(AIProvider):
 		return claude_tools
 
 
+def get_chatbot_settings_ai_provider() -> str:
+	"""AI provider from Chatbot Settings — authoritative for API routing.
+
+	Conversation documents store ``ai_provider`` at creation time; without this,
+	switching provider in settings would still hit the old endpoint for existing
+	chats (e.g. OpenAI URL while settings say Gemini).
+	"""
+	try:
+		settings = frappe.get_single("Chatbot Settings")
+		name = (getattr(settings, "ai_provider", None) or "OpenAI").strip()
+	except Exception:
+		name = "OpenAI"
+	return name or "OpenAI"
+
+
 def _resolve_settings(provider_name: str) -> dict:
 	"""Build a unified settings dict for the given provider."""
 	settings = frappe.get_single("Chatbot Settings")

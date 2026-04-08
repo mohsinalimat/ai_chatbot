@@ -334,10 +334,14 @@ const {
 const { initSocket, isConnected, isOnline } = useSocket()
 
 // --- Phase 13A.3: Connection lost banner ---
-// Show the banner when EITHER the browser goes offline (instant) OR
-// the Socket.IO connection drops (delayed by heartbeat timeout).
+// Only while we are actively waiting on the assistant (streaming or loading).
+// Otherwise the banner would stay on forever when Socket.IO never connects but
+// HTTP non-streaming fallback still works (isConnected stays false).
 const showConnectionBanner = computed(() =>
-  (!isConnected.value || !isOnline.value) && streamingEnabled.value && !hasNoMessages.value
+  streamingEnabled.value &&
+  !hasNoMessages.value &&
+  (isStreaming.value || isLoading.value) &&
+  (!isConnected.value || !isOnline.value)
 )
 
 // --- Phase 13A.4: Smart auto-scroll ---

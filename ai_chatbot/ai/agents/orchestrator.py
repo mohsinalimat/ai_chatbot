@@ -21,6 +21,7 @@ from ai_chatbot.ai.agents.planner import create_plan
 from ai_chatbot.ai.agents.prompts import get_synthesis_prompt
 from ai_chatbot.core.token_optimizer import compress_tool_result
 from ai_chatbot.core.token_tracker import track_token_usage
+from ai_chatbot.utils.ai_providers import get_chatbot_settings_ai_provider
 
 # If more than half the data steps fail, abort and fall back to simple path
 FAILURE_THRESHOLD = 0.5
@@ -76,7 +77,7 @@ def run_orchestrated(
 
 	Falls back to None on failure (caller should proceed with simple path).
 	"""
-	ai_provider = conversation.ai_provider
+	ai_provider = get_chatbot_settings_ai_provider()
 	conversation_id = conversation.name
 
 	# Extract user query from history

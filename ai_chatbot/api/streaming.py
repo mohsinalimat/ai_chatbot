@@ -21,7 +21,7 @@ from ai_chatbot.core.prompts import build_system_prompt
 from ai_chatbot.core.token_optimizer import optimize_history
 from ai_chatbot.core.token_tracker import estimate_cost, track_token_usage
 from ai_chatbot.tools.base import BaseTool, get_tools_for_message
-from ai_chatbot.utils.ai_providers import get_ai_provider
+from ai_chatbot.utils.ai_providers import get_ai_provider, get_chatbot_settings_ai_provider
 
 # Buffer threshold — batch tokens to reduce Redis Pub/Sub overhead
 TOKEN_BUFFER_SIZE = 20  # characters
@@ -102,7 +102,7 @@ def send_message_streaming(
 			now=False,
 			conversation_id=conversation_id,
 			stream_id=stream_id,
-			ai_provider=conversation.ai_provider,
+			ai_provider=get_chatbot_settings_ai_provider(),
 			user=frappe.session.user,
 		)
 

@@ -257,7 +257,7 @@ def undo_action(undo_token: str) -> dict:
 	"""
 	try:
 		key = f"{_UNDO_PREFIX}{undo_token}"
-		data = frappe.cache.get_value(key)
+		data = frappe.cache().get_value(key)
 		if not data:
 			return {
 				"success": False,
@@ -315,7 +315,7 @@ def undo_action(undo_token: str) -> dict:
 			return {"success": False, "error": f"'{action}' actions cannot be undone via chatbot."}
 
 		# Remove the undo token
-		frappe.cache.delete_value(key)
+		frappe.cache().delete_value(key)
 
 		return {
 			"success": True,
@@ -351,7 +351,7 @@ def _store_undo_metadata(action, doctype, name, previous_values=None):
 		"previous_values": previous_values,
 		"user": frappe.session.user,
 	}
-	frappe.cache.set_value(key, json.dumps(metadata, default=str), expires_in_sec=_UNDO_TTL)
+	frappe.cache().set_value(key, json.dumps(metadata, default=str), expires_in_sec=_UNDO_TTL)
 	return token
 
 

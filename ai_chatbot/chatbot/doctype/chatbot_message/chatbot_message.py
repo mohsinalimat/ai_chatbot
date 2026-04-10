@@ -1,10 +1,9 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-from datetime import datetime
-
 import frappe
 from frappe.model.document import Document
+from frappe.utils import now_datetime
 
 
 class ChatbotMessage(Document):
@@ -14,7 +13,7 @@ class ChatbotMessage(Document):
 		"""Called before document is inserted"""
 		# Set timestamp
 		if not self.timestamp:
-			self.timestamp = datetime.now()
+			self.timestamp = now_datetime()
 
 	def validate(self):
 		"""Validate document before save"""

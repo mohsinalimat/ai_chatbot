@@ -1,10 +1,9 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-from datetime import datetime
-
 import frappe
 from frappe.model.document import Document
+from frappe.utils import now_datetime
 
 
 class ChatbotConversation(Document):
@@ -13,8 +12,8 @@ class ChatbotConversation(Document):
 	def before_insert(self):
 		"""Called before document is inserted"""
 		# Set timestamps
-		self.created_at = datetime.now()
-		self.updated_at = datetime.now()
+		self.created_at = now_datetime()
+		self.updated_at = now_datetime()
 
 		# Set default user if not set
 		if not self.user:
@@ -23,7 +22,7 @@ class ChatbotConversation(Document):
 	def before_save(self):
 		"""Called before document is saved"""
 		# Update timestamp
-		self.updated_at = datetime.now()
+		self.updated_at = now_datetime()
 
 	def validate(self):
 		"""Validate document before save"""

@@ -377,7 +377,7 @@ def _store_pending_confirmation(confirmation_id, payload):
 		payload: Dict to store (will be JSON-serialized).
 	"""
 	key = f"{_CACHE_PREFIX}{confirmation_id}"
-	frappe.cache.set_value(key, json.dumps(payload, default=str), expires_in_sec=_CONFIRMATION_TTL)
+	frappe.cache().set_value(key, json.dumps(payload, default=str), expires_in_sec=_CONFIRMATION_TTL)
 
 
 def load_pending_confirmation(confirmation_id):
@@ -393,7 +393,7 @@ def load_pending_confirmation(confirmation_id):
 		Dict payload or None.
 	"""
 	key = f"{_CACHE_PREFIX}{confirmation_id}"
-	data = frappe.cache.get_value(key)
+	data = frappe.cache().get_value(key)
 	if not data:
 		return None
 	return json.loads(data) if isinstance(data, str) else data
@@ -406,7 +406,7 @@ def delete_pending_confirmation(confirmation_id):
 		confirmation_id: UUID string.
 	"""
 	key = f"{_CACHE_PREFIX}{confirmation_id}"
-	frappe.cache.delete_value(key)
+	frappe.cache().delete_value(key)
 
 
 # ── Display Field Builders ───────────────────────────────────────────

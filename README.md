@@ -124,7 +124,7 @@ See [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) for the complete tool ref
 - Frappe Framework (v15+)
 - ERPNext (v15+) -- required for business intelligence tools
 - HRMS app -- optional, required only for HR tools
-- Python 3.14+
+- Python 3.10+
 - Node.js 18+
 - An API key from at least one supported provider (OpenAI, Anthropic, or Google)
 

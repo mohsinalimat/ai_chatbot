@@ -853,7 +853,7 @@ Naming: `CSR-#####` (auto-incrementing).
 
 | File | Purpose |
 |---|---|
-| `pyproject.toml` | Project metadata, Python >=3.14 requirement, dependencies (`twilio==8.5.0`), optional IDP dependencies (`pypdf`, `openpyxl`, `python-docx`), Ruff linter config (110 char lines, tab indent, double quotes, rules: F, E, W, I, UP, B, RUF) |
+| `pyproject.toml` | Project metadata, Python >=3.10 requirement, dependencies (`twilio==8.5.0`), optional IDP dependencies (`pypdf`, `openpyxl`, `python-docx`), Ruff linter config (110 char lines, tab indent, double quotes, rules: F, E, W, I, UP, B, RUF) |
 | `setup.py` / `setup.cfg` | Legacy package setup for Frappe bench compatibility |
 | `.pre-commit-config.yaml` | Pre-commit hooks: trailing whitespace, merge conflict check, AST check, JSON/TOML/YAML validation, ruff import sorting, ruff linting, ruff formatting, prettier (JS/Vue/SCSS), eslint (JS) |
 

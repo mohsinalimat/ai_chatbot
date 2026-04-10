@@ -41,7 +41,7 @@ frontend/             # Vue 3 SPA
 
 ## Code Conventions
 
-- **Python:** Tabs for indentation, 110 char line length, double quotes, Python 3.14+, type hints
+- **Python:** Tabs for indentation, 110 char line length, double quotes, Python 3.10+, type hints
 - **Linter:** Ruff with rules F, E, W, I, UP, B, RUF
 - **JavaScript/Vue:** Vue 3 Composition API (`<script setup>`), Tailwind CSS for styling
 - **JS Lint:** ESLint (recommended) + Prettier

@@ -146,6 +146,8 @@ class AIProvider:
 class OpenAIProvider(AIProvider):
 	"""OpenAI API Integration"""
 
+	provider_name = "OpenAI"
+
 	def __init__(self, settings):
 		super().__init__(settings)
 		self.api_key = settings.get("api_key")
@@ -191,8 +193,8 @@ class OpenAIProvider(AIProvider):
 			return response.json()
 
 		except requests.exceptions.RequestException as e:
-			log_provider_error("OpenAI", e)
-			_raise_provider_api_error("OpenAI", e)
+			log_provider_error(self.provider_name, e)
+			_raise_provider_api_error(self.provider_name, e)
 
 	def chat_completion_stream(self, messages, tools=None):
 		"""Yield structured streaming events from OpenAI.
@@ -302,7 +304,7 @@ class OpenAIProvider(AIProvider):
 					yield {"type": "finish", "finish_reason": finish_reason}
 
 		except requests.exceptions.RequestException as e:
-			log_provider_error("OpenAI", e)
+			log_provider_error(self.provider_name, e)
 			status_code, retry_after = _extract_error_details(e)
 			yield {
 				"type": "error",
@@ -326,6 +328,8 @@ class GeminiProvider(OpenAIProvider):
 	  another tool call instead of text content — the multi-round loop
 	  in streaming.py handles this with ``max_tool_rounds``.
 	"""
+
+	provider_name = "Gemini"
 
 	def __init__(self, settings):
 		# Skip OpenAIProvider.__init__ — set fields directly

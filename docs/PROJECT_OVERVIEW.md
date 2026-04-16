@@ -932,9 +932,11 @@ These tools are thin wrappers around ERPNext's standard report `execute()` funct
 
 | Tool Name                     | Description                                 | DocTypes            |
 |-------------------------------|---------------------------------------------|---------------------|
-| extract_document_data         | Extract structured data from uploaded files  | (none)              |
-| create_from_extracted_data    | Create ERPNext records from extracted data   | (various)           |
+| extract_document_data         | Extract structured data and map to ERPNext DocType schema | (none)              |
+| extract_document_raw          | Extract all data without schema mapping (non-standard docs) | (none)              |
 | compare_document_with_record  | Compare uploaded document vs ERPNext record  | (various)           |
+
+Note: Record creation from IDP extraction is routed through `propose_create_document` (in Operations/CRUD tools) which renders a ConfirmationCard with prerequisite detection. The legacy `create_from_extracted_data` function exists for backward compatibility but is no longer registered as an LLM-callable tool.
 
 **Predictive (6 tools) -- category: `predictive`, toggle: `enable_predictive_tools`**
 
@@ -1319,69 +1321,427 @@ Multi-agent orchestration is controlled by the `enable_agent_orchestration` fiel
 
 ### 10.1 Overview
 
-The IDP subsystem extracts structured data from uploaded documents and creates ERPNext records from the extracted data.
+The IDP subsystem extracts structured data from uploaded documents (invoices, purchase orders, quotations, receipts) and creates ERPNext records through a multi-step pipeline with user confirmation. It handles documents in any language, non-uniform headers, inconsistent formats, and automatically detects missing master records (Suppliers, Customers, Items, UOMs, Accounts) that need to be created before the main document.
+
+**Key design principles:**
+
+- **File Alias System** — The server assigns short aliases (`file_1`, `file_2`) to uploaded files. The LLM only sees these aliases, never the real file URLs. This eliminates LLM URL hallucination/renaming entirely.
+- **Confirmation Card Flow** — Record creation always goes through `propose_create_document` which renders a ConfirmationCard in the frontend. The user reviews extracted data and missing prerequisites before clicking Save Draft / Submit / Cancel.
+- **Automatic Prerequisite Detection** — Missing Suppliers, Customers, Items, UOMs, and Accounts are detected before creation and presented to the user with editable fields in the ConfirmationCard.
+- **Stop-on-Error** — Fatal errors (e.g., unknown file_id) return `stop_processing: true`, causing the tool execution loop to break immediately instead of letting the LLM retry.
 
 ### 10.2 Supported Formats
 
 | Format | Extractor              | Method                          |
 |--------|------------------------|---------------------------------|
-| PDF    | `pdf_extractor.py`     | Text extraction + LLM Vision    |
-| Images | (LLM Vision directly)  | Base64 encoded, sent to AI      |
-| Excel  | `excel_extractor.py`   | Cell-by-cell parsing            |
-| CSV    | `excel_extractor.py`   | Parsed as tabular data          |
-| Word   | `docx_extractor.py`    | Paragraph and table extraction  |
+| PDF    | `pdf_extractor.py`     | Text extraction via pypdf; falls back to LLM Vision for scanned PDFs |
+| Images | `base.py` (direct)     | Base64 encoded, sent to AI Vision API |
+| Excel  | `excel_extractor.py`   | Cell-by-cell sheet parsing       |
+| CSV    | `excel_extractor.py`   | Tabular data parsing             |
+| Word   | `docx_extractor.py`    | Paragraph and table extraction   |
+| Text   | `base.py` (direct)     | UTF-8 text content               |
 
-### 10.3 IDP Pipeline Diagram
+### 10.3 IDP Tools
+
+| Tool Name                     | Description                                 | Registered |
+|-------------------------------|---------------------------------------------|------------|
+| `extract_document_data`       | Extract structured data and map to ERPNext DocType schema | Yes |
+| `extract_document_raw`        | Extract all data WITHOUT mapping to any DocType (for unsupported document types) | Yes |
+| `compare_document_with_record`| Compare uploaded document vs existing ERPNext record | Yes |
+| `propose_create_document`     | Propose creating ERPNext record (renders ConfirmationCard) | Yes (in `tools/crud.py`) |
+| `create_from_extracted_data`  | Legacy direct creation (deprecated, no longer registered as LLM tool) | No |
+
+### 10.4 File Alias System
+
+The LLM cannot be trusted to pass file URLs accurately — it tends to shorten, rename, or hallucinate URLs. The file alias system solves this by never exposing real file URLs to the LLM.
+
+**How it works:**
+
+```
+Server-side (api/history.py)                     LLM sees
+──────────────────────────────                    ────────
+/private/files/GST_Invoice_2025.pdf  ───────►  file_1
+/private/files/Purchase_Order_ABC.xlsx  ──────►  file_2
+```
+
+1. **Assignment** (`api/history.py: get_conversation_history`):
+   - When rebuilding conversation history, each unique `file_url` in attachment metadata gets assigned a short alias: `file_1`, `file_2`, etc.
+   - The alias is stored in `att["_file_id"]` on each attachment dict.
+   - Attachment metadata tags in the LLM message use `file_id: file_1` instead of the real URL.
+   - The complete mapping is stored in `frappe.flags.file_alias_registry`.
+
+2. **Metadata in LLM messages**:
+   - Image attachments: `[Attached image: invoice.pdf, file_id: file_1]`
+   - Non-image attachments: `[Attached file: invoice.pdf (application/pdf), file_id: file_1]`
+   - For non-image attachments, inline document text (up to 15,000 chars) is also included so the LLM can read the content directly.
+
+3. **Resolution** (`tools/idp.py: _resolve_file_id`):
+   - When any IDP tool is called, `_resolve_file_id(file_id)` looks up `frappe.flags.file_alias_registry` to get the real `file_url`.
+   - If the alias is not found, the tool returns an error with `stop_processing: true`.
+
+4. **Benefits**:
+   - Short aliases (`file_1`) are impossible for the LLM to hallucinate or rename.
+   - Works with multiple attachments — the LLM picks the correct alias based on context.
+   - The same file always gets the same alias within a conversation (deduplication).
+
+### 10.5 End-to-End IDP Workflow
+
+#### Workflow A — Extraction + Record Creation (Primary Flow)
+
+```
+Step 1: User uploads a document via ChatInput
+        ↓
+        upload_chat_file() → stored as private Frappe File
+        Attachment metadata (file_url, file_name, mime_type) saved in Chatbot Message
+        ↓
+Step 2: Conversation history is rebuilt (api/history.py)
+        File alias assigned: file_url → file_1
+        LLM sees: "[Attached file: invoice.pdf (application/pdf), file_id: file_1]"
+        + inline document text (if extractable)
+        ↓
+Step 3: LLM determines document type and calls extract_document_data(file_id="file_1", target_doctype="Purchase Invoice")
+        ↓
+Step 4: _resolve_file_id("file_1") → "/private/files/invoice.pdf"
+        ↓
+Step 5: Content extraction (idp/extractors/base.py)
+        - PDF with selectable text → pypdf text extraction
+        - Scanned PDF / Image → base64 for Vision API
+        - Excel/CSV → tabular text
+        - Word → paragraph + table extraction
+        ↓
+Step 6: Schema discovery (idp/schema.py)
+        - get_doctype_schema("Purchase Invoice") → field definitions via frappe.get_meta()
+        - build_schema_prompt() → human-readable field description for LLM
+        ↓
+Step 7: LLM semantic mapping (idp/mapper.py)
+        - Constructs extraction prompt: document content + schema + rules
+        - Sends to AI provider (same provider as chat)
+        - Parses structured JSON response
+        - Normalizes dates, numbers, field names
+        - Maps party names (issuer → supplier for Purchase Invoice, etc.)
+        ↓
+Step 8: Optional validation (when enable_strict_idp_validation is on)
+        - validate_extraction() checks link fields, mandatory fields
+        - Resolves fuzzy matches (e.g., "Acme" → "Acme Corp")
+        ↓
+Step 9: LLM presents extracted data to user for review
+        Shows field-by-field table: supplier, dates, items, taxes, totals
+        ↓
+Step 10: LLM calls propose_create_document(doctype, values_json)
+         ↓
+Step 11: Prerequisite detection (data/prerequisites.py)
+         detect_prerequisites() scans values for:
+         - Missing Suppliers / Customers (party fields)
+         - Missing Items (item_code in child tables)
+         - Missing UOMs (uom in child tables)
+         - Missing Accounts (account_head in taxes tables)
+         Each missing record includes editable_fields for the frontend form
+         ↓
+Step 12: Confirmation payload stored in Redis (15-min TTL)
+         Payload includes: action, doctype, values, prerequisites, errors
+         ↓
+Step 13: ConfirmationCard rendered in frontend
+         Shows:
+         - Document summary (key fields, items table)
+         - Missing prerequisites with editable fields:
+           • Parties: name, customer_group/supplier_group, territory, currency
+           • Items: is_stock_item, is_fixed_asset, item_group, stock_uom
+           • Accounts: account_name, parent_account, account_type
+           • UOMs: name only (auto-created)
+         - Three buttons: Cancel / Save Draft / Submit
+         ↓
+Step 14: User edits prerequisite fields if needed, clicks Save Draft or Submit
+         ↓
+Step 15: Frontend calls api/crud.py: confirm_action(confirmation_id, user_overrides, submit_after_create)
+         ↓
+Step 16: Prerequisites created in dependency order:
+         Phase 0: Accounts (tax/GL accounts)
+         Phase 1: UOMs (Items reference stock_uom)
+         Phase 2: Parties (Customer/Supplier)
+         Phase 3: Items (depend on UOM existing)
+         ↓
+Step 17: name_map applied to document values
+         (e.g., if naming series renamed "Acme Corp" → "CUST-00001")
+         ↓
+Step 18: Main document created via create_document()
+         ERPNext handles set_missing_values, set_item_defaults, validate
+         ↓
+Step 19: (Optional) If user clicked Submit: submit_document()
+         ↓
+Step 20: Result returned to frontend with doc_url, undo_token (5-min TTL)
+         ConfirmationCard updates to show success + link + Undo button
+```
+
+#### Workflow B — Raw Extraction (Non-Standard Documents)
+
+For documents that don't match a supported ERPNext DocType (salary slips, bank statements, tax certificates, etc.):
+
+```
+Step 1-4: Same as Workflow A (upload, alias, tool call)
+         LLM calls extract_document_raw(file_id="file_1")
+         ↓
+Step 5:  Content extraction (same as Workflow A)
+         ↓
+Step 6:  LLM extracts ALL fields and tables without schema mapping
+         Returns: document_type, headers dict, tables list, summary
+         ↓
+Step 7:  LLM presents extracted data to user
+         No record creation — informational only
+```
+
+#### Workflow C — Document Comparison
+
+```
+Step 1-4: Same as Workflow A (upload, alias, tool call)
+         LLM calls compare_document_with_record(file_id="file_1", doctype, docname)
+         ↓
+Step 5:  Extract data from uploaded document (same pipeline)
+         ↓
+Step 6:  Load existing ERPNext record
+         ↓
+Step 7:  Field-by-field comparison (idp/comparison.py)
+         Identifies discrepancies in quantities, amounts, dates, etc.
+         ↓
+Step 8:  LLM presents discrepancy report to user
+```
+
+### 10.6 IDP Pipeline Diagram
 
 ```mermaid
 flowchart TD
     A[User uploads document<br/>PDF / Image / Excel / Word] --> B[upload_chat_file<br/>Store as Frappe File]
-    B --> C[AI collects preferences<br/>language, is_stock_item,<br/>is_fixed_asset, item_group]
-    C --> D[extract_document_data]
-    D --> E[Resolve extractor<br/>by MIME type]
-    E --> F[Extract via LLM Vision<br/>or file parser]
-    F --> G[Map to ERPNext schema<br/>mapper.py]
+    B --> C[History rebuilt<br/>File alias assigned:<br/>file_url → file_1]
 
-    G --> H{Strict validation<br/>enabled?}
-    H -->|Yes| I[Validate fields<br/>validators.py]
-    I --> J{Valid?}
-    J -->|No| K[Return validation errors]
-    H -->|No| L[Present extracted data<br/>to user for review]
-    J -->|Yes| L
+    C --> D{LLM determines<br/>document type}
+    D -->|Supported DocType| E[extract_document_data<br/>file_id + target_doctype]
+    D -->|Non-standard doc| F[extract_document_raw<br/>file_id only]
+    D -->|Compare with record| G[compare_document_with_record<br/>file_id + doctype + docname]
 
-    L --> M{User confirms?}
-    M -->|No| N[End — no record created]
-    M -->|Yes| O[create_from_extracted_data]
+    E --> H[_resolve_file_id<br/>file_1 → /private/files/...]
+    H --> I[Content extraction<br/>PDF text / Vision / Excel / Word]
+    I --> J[Schema discovery<br/>get_doctype_schema]
+    J --> K[LLM semantic mapping<br/>mapper.py → JSON]
+    K --> L{Strict validation?}
+    L -->|Yes| M[validate_extraction<br/>Link fields, mandatories]
+    L -->|No| N[Return extracted data]
+    M --> N
 
-    O --> P{Write operations<br/>enabled?}
-    P -->|No| Q[Return: disabled error]
-    P -->|Yes| R{Missing masters?<br/>Supplier / Customer / Item}
+    N --> O[LLM presents data<br/>for user review]
+    O --> P[LLM calls<br/>propose_create_document]
 
-    R -->|None missing| S[Create ERPNext document]
-    R -->|Masters missing| T{Auto-create enabled?}
-    T -->|Yes| U[_auto_create_missing_masters<br/>Create parties, items, UOMs]
-    U --> S
-    T -->|No| V[Return missing list<br/>Ask user to confirm creation]
-    V --> W{User confirms?}
-    W -->|Yes| U
-    W -->|No| N
+    P --> Q[detect_prerequisites<br/>Missing parties, items,<br/>UOMs, accounts]
+    Q --> R[Store in Redis<br/>15-min TTL]
+    R --> S[ConfirmationCard<br/>rendered in frontend]
 
-    S --> X[Return created document<br/>with name and link]
+    S --> T{User action}
+    T -->|Cancel| U[cancel_action<br/>Remove from Redis]
+    T -->|Save Draft| V[confirm_action]
+    T -->|Submit| W[confirm_action<br/>submit_after_create=true]
+
+    V --> X[execute_prerequisites<br/>Accounts → UOMs →<br/>Parties → Items]
+    W --> X
+    X --> Y[create_document<br/>ERPNext validates + saves]
+    Y --> Z{Submit requested?}
+    Z -->|Yes| AA[submit_document]
+    Z -->|No| AB[Return draft doc]
+    AA --> AB
+
+    F --> FC[_resolve_file_id]
+    FC --> FD[Content extraction]
+    FD --> FE[LLM extracts all fields<br/>No schema mapping]
+    FE --> FF[Return headers + tables<br/>Informational only]
+
+    G --> GC[_resolve_file_id]
+    GC --> GD[Content extraction + mapping]
+    GD --> GE[Load existing ERPNext record]
+    GE --> GF[Field-by-field comparison]
+    GF --> GG[Return discrepancy report]
 ```
 
-### 10.4 Workflow
+### 10.6.1 Internal Extraction Pipeline
 
-1. User uploads a document (via ChatInput file upload).
-2. AI collects user preferences: output language, is_stock_item, is_fixed_asset, item_group.
-3. `extract_document_data` tool is called with `file_url` and `target_doctype`.
-4. Extracted data is presented to the user for review.
-5. User confirms; `create_from_extracted_data` is called.
-6. If master records are missing (e.g., new suppliers, items), the tool reports them and the user is asked whether to create them.
-7. On confirmation, `create_from_extracted_data` is called again with `create_missing_masters='true'` and `item_defaults_json`.
+A focused view of the internal data flow through Python modules during `extract_document_data`:
 
-### 10.5 Document Comparison
+```mermaid
+flowchart LR
+    subgraph tools/idp.py
+        A[extract_document_data<br/>file_id + target_doctype] --> B[_resolve_file_id<br/>file_1 → real URL]
+    end
 
-The `compare_document_with_record` tool compares an uploaded document against an existing ERPNext record, identifying discrepancies in quantities, amounts, dates, and other fields.
+    subgraph idp/extractors
+        B --> C{MIME type?}
+        C -->|PDF text| D[pdf_extractor<br/>pypdf]
+        C -->|Scanned/Image| E[base.py<br/>base64 → Vision API]
+        C -->|XLSX/CSV| F[excel_extractor<br/>cell-by-cell]
+        C -->|DOCX| G[docx_extractor<br/>paragraphs + tables]
+        D --> H[document_content: str]
+        E --> H
+        F --> H
+        G --> H
+    end
+
+    subgraph idp/schema.py
+        I[get_doctype_schema<br/>frappe.get_meta] --> J[header fields<br/>+ ALL child tables]
+        J --> K[build_schema_prompt<br/>human-readable description]
+    end
+
+    subgraph idp/mapper.py
+        H --> L[_build_extraction_messages]
+        K --> L
+        L --> M[_build_child_table_rules<br/>items rules + tax rules +<br/>generic rules per table]
+        L --> N[_build_json_output_format<br/>dynamic JSON example with<br/>all child table keys]
+        M --> O[LLM call<br/>document content +<br/>schema + rules]
+        N --> O
+        O --> P[_normalize_extracted_data<br/>loop ALL child tables:<br/>date/number parsing,<br/>field mapping,<br/>item defaults]
+    end
+
+    subgraph Result
+        P --> Q[extracted_data dict<br/>header + items[] +<br/>taxes[] + other tables]
+    end
+```
+
+### 10.6.2 Document Creation Pipeline
+
+Internal data flow from `propose_create_document` through confirmation to record creation:
+
+```mermaid
+flowchart TD
+    subgraph tools/crud.py
+        A[propose_create_document<br/>doctype + values_json] --> B[validate_link_fields<br/>validate_child_table_items]
+        B --> C[_build_display_fields<br/>+ _build_child_table_preview]
+    end
+
+    subgraph data/prerequisites.py
+        A --> D[detect_prerequisites]
+        D --> D1[Phase 0: _detect_missing_accounts<br/>scan taxes child tables]
+        D --> D2[Phase 1: _detect_missing_uoms<br/>scan item child tables]
+        D --> D3[Phase 2: _detect_missing_parties<br/>supplier/customer fields]
+        D --> D4[Phase 3: _detect_missing_items<br/>item_code in child tables]
+    end
+
+    C --> E[Store payload in Redis<br/>15-min TTL + expires_at]
+    D1 --> E
+    D2 --> E
+    D3 --> E
+    D4 --> E
+
+    subgraph Frontend
+        E --> F[ConfirmationCard.vue<br/>renders preview +<br/>prerequisites form +<br/>expiry countdown]
+        F --> G{User action}
+        G -->|Cancel| H[cancel_action<br/>delete from Redis]
+        G -->|Save Draft| I[confirm_action]
+        G -->|Submit| J[confirm_action<br/>submit_after_create=true]
+    end
+
+    subgraph api/crud.py
+        I --> K[execute_prerequisites<br/>Accounts → UOMs →<br/>Parties → Items]
+        J --> K
+        K --> L[_apply_name_map<br/>fix auto-naming refs]
+        L --> M[create_document<br/>ERPNext validates + saves]
+        M --> N{Submit?}
+        N -->|Yes| O[submit_document]
+        N -->|No| P[Return draft + undo token]
+        O --> P
+    end
+```
+
+### 10.7 File and Module Reference
+
+```
+ai_chatbot/
+├── tools/
+│   ├── idp.py                    # IDP tools: extract_document_data, extract_document_raw,
+│   │                             #   compare_document_with_record, _resolve_file_id
+│   └── crud.py                   # propose_create_document (ConfirmationCard trigger)
+│
+├── api/
+│   ├── files.py                  # upload_chat_file, build_vision_content (file_id metadata)
+│   ├── history.py                # File alias system: assigns file_1/file_2, builds registry
+│   ├── crud.py                   # confirm_action, cancel_action, undo_action
+│   ├── chat.py                   # Tool loop with stop_processing detection
+│   └── streaming.py              # Streaming tool loop with stop_processing detection
+│
+├── idp/
+│   ├── extractors/
+│   │   ├── base.py               # extract_content() — dispatcher by MIME type
+│   │   ├── pdf_extractor.py      # pypdf text extraction
+│   │   ├── excel_extractor.py    # XLSX and CSV parsing
+│   │   └── docx_extractor.py     # Word document extraction
+│   ├── mapper.py                 # LLM semantic mapping: document content + schema → JSON
+│   ├── schema.py                 # DocType schema discovery via frappe.get_meta()
+│   ├── validators.py             # Field validation, link resolution, fuzzy matching
+│   └── comparison.py             # Document vs record field-by-field comparison
+│
+├── data/
+│   ├── prerequisites.py          # detect_prerequisites, execute_prerequisites
+│   │                             #   (Accounts → UOMs → Parties → Items)
+│   └── operations.py             # create_document, submit_document, update_document
+│
+├── core/
+│   └── prompts.py                # System prompt IDP instructions (file_id usage rules)
+│
+└── frontend/src/components/
+    └── ConfirmationCard.vue      # Renders prerequisites, editable fields, action buttons
+```
+
+### 10.8 Prerequisite Detection and Creation
+
+When the LLM calls `propose_create_document`, the backend runs `detect_prerequisites()` which scans the document values for missing master records:
+
+| Phase | DocType  | Detection Method | Editable Fields |
+|-------|----------|------------------|-----------------|
+| 0     | Account  | Link→Account fields in taxes child tables | account_name, parent_account, account_type |
+| 1     | UOM      | Link→UOM fields in item child tables | (name only, auto-created) |
+| 2     | Customer / Supplier | Party fields on parent doc | customer_group/supplier_group, territory, billing currency |
+| 3     | Item     | Link→Item fields in item child tables | is_stock_item, is_fixed_asset, item_group, stock_uom |
+
+**Fuzzy resolution**: Before flagging a record as missing, the system tries `_resolve_link_value()` which performs LIKE matching (e.g., "Acme" resolves to "Acme Corp" if that's the only match).
+
+**Dependency order**: Accounts are created first (tax heads referenced by the document), then UOMs (referenced by Items), then Parties, then Items (which reference UOMs as `stock_uom`).
+
+**Frontend rendering**: Each missing record's `editable_fields` follow a Frappe-like schema (`fieldname`, `label`, `fieldtype`, `default`), enabling the ConfirmationCard to dynamically render form inputs. Users can edit defaults before confirming.
+
+### 10.9 Stop-on-Error Mechanism
+
+When an IDP tool encounters a fatal error (e.g., unknown `file_id`, file not found), it returns:
+
+```python
+{"error": "...", "stop_processing": True}
+```
+
+Both `api/chat.py` and `api/streaming.py` detect `stop_processing` in the tool result and immediately break out of the tool execution loop, preventing the LLM from retrying or hallucinating alternative approaches.
+
+### 10.10 Supported Target DocTypes
+
+| DocType           | Party Field | Party Type |
+|-------------------|-------------|------------|
+| Sales Invoice     | customer    | Customer   |
+| Sales Order       | customer    | Customer   |
+| Quotation         | customer    | Customer   |
+| Delivery Note     | customer    | Customer   |
+| Purchase Invoice  | supplier    | Supplier   |
+| Purchase Order    | supplier    | Supplier   |
+| Purchase Receipt  | supplier    | Supplier   |
+
+### 10.11 Document Comparison
+
+The `compare_document_with_record` tool enables reconciliation use cases:
+
+- Compare a vendor's invoice against an existing Purchase Order
+- Compare a client's PO against a Sales Order
+- Identify discrepancies in quantities, rates, amounts, dates, and terms
+
+The tool extracts data from the uploaded document using the same IDP pipeline, loads the existing ERPNext record, and performs a field-by-field comparison via `idp/comparison.py`.
+
+### 10.12 Configuration (Chatbot Settings)
+
+| Field                          | Type  | Description |
+|--------------------------------|-------|-------------|
+| `enable_idp_tools`             | Check | Master toggle for IDP tools |
+| `enable_write_operations`      | Check | Required for record creation |
+| `enable_strict_idp_validation` | Check | Run validators.py before presenting data |
+| `auto_create_idp_masters`      | Check | Legacy auto-create toggle (deprecated in favor of ConfirmationCard) |
+| `idp_output_language`          | Data  | Default output language for extraction (overrides per-call) |
 
 ---
 

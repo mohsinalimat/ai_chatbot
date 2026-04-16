@@ -176,24 +176,24 @@ def build_vision_content(message_text: str, attachments: list[dict] | str) -> li
 					"image_url": {"url": f"data:{mime_type};base64,{b64_data}"},
 				}
 			)
-			# Include file_url so the LLM can pass it to tools (e.g. IDP extraction)
-			file_url = att.get("file_url", "")
+			# Include file_id so the LLM can pass it to IDP tools
+			file_id = att.get("_file_id", "")
 			file_name = att.get("file_name", "unknown")
-			if file_url:
+			if file_id:
 				parts.append(
 					{
 						"type": "text",
-						"text": f"[Image file_url: {file_url}, file_name: {file_name}]",
+						"text": f"[Attached image: {file_name}, file_id: {file_id}]",
 					}
 				)
 		else:
-			# Non-image: add file reference with file_url so LLM can pass it to tools (e.g. IDP)
-			file_url = att.get("file_url", "")
+			# Non-image: add file reference with file_id for IDP tools
+			file_id = att.get("_file_id", "")
 			file_name = att.get("file_name", "unknown")
 			parts.append(
 				{
 					"type": "text",
-					"text": (f"[Attached file: {file_name} ({mime_type}), file_url: {file_url}]"),
+					"text": (f"[Attached file: {file_name} ({mime_type}), file_id: {file_id}]"),
 				}
 			)
 

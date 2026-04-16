@@ -8,7 +8,7 @@
  "doctype": "Workspace",
  "for_user": "",
  "hide_custom": 0,
- "icon": "brain-circuit",
+ "icon": "comment",
  "idx": 1,
  "is_hidden": 0,
  "label": "Chatbot",
@@ -82,7 +82,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-03-27 19:59:03.137341",
+ "modified": "2026-04-14 13:34:32.796200",
  "modified_by": "Administrator",
  "module": "Chatbot",
  "name": "Chatbot",

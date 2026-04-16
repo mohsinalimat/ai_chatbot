@@ -85,23 +85,30 @@ def compare_with_record(
 				}
 			)
 
-	# Compare items (child table)
-	items_comparison = _compare_items(extracted_data, doc, schema)
+	# Compare ALL child tables (items, taxes, etc.)
+	child_table_comparisons = {}
+	for table_fieldname, child in schema.get("child_tables", {}).items():
+		table_result = _compare_child_table(extracted_data, doc, table_fieldname, child)
+		if table_result:
+			child_table_comparisons[table_fieldname] = table_result
 
 	# Build summary
 	total_compared = len(matches) + len(discrepancies)
 	summary = (
 		f"{len(matches)} of {total_compared} header fields match. {len(discrepancies)} discrepancies found."
 	)
-	if items_comparison.get("item_discrepancies"):
-		summary += f" {len(items_comparison['item_discrepancies'])} item-level differences."
+	total_child_diffs = sum(len(ct.get("item_discrepancies", [])) for ct in child_table_comparisons.values())
+	if total_child_diffs:
+		summary += f" {total_child_diffs} child table differences."
 
 	return {
 		"matches": matches,
 		"discrepancies": discrepancies,
 		"missing_in_document": missing_in_document,
 		"missing_in_record": missing_in_record,
-		"items_comparison": items_comparison,
+		"child_table_comparisons": child_table_comparisons,
+		# Backward compat: keep items_comparison pointing to the items table result
+		"items_comparison": child_table_comparisons.get("items", {}),
 		"summary": summary,
 	}
 
@@ -139,41 +146,35 @@ def _values_match(extracted, existing, field_type: str) -> bool:
 	return str(extracted).strip().lower() == str(existing).strip().lower()
 
 
-def _compare_items(
+def _compare_child_table(
 	extracted_data: dict,
 	doc,
-	schema: dict,
+	table_fieldname: str,
+	child_schema: dict,
 ) -> dict:
-	"""Compare extracted line items with existing document items.
+	"""Compare a single extracted child table with existing document rows.
 
 	Uses a best-effort matching strategy:
-	1. Match by item_code if available
+	1. Match by item_code if available (for items tables)
 	2. Match by position (index) as fallback
 
 	Args:
-		extracted_data: Extracted data with items array.
+		extracted_data: Extracted data dict.
 		doc: Frappe document object.
-		schema: DocType schema.
+		table_fieldname: Fieldname of the child table (e.g., "items", "taxes").
+		child_schema: Schema dict for this child table.
 
 	Returns:
-		dict with item_matches, item_discrepancies, and summary.
+		dict with item_matches, item_discrepancies, and extra_existing.
 	"""
-	# Find the items child table
-	items_fieldname = None
-	child_schema = None
-	for table_name, child in schema.get("child_tables", {}).items():
-		items_fieldname = table_name
-		child_schema = child
-		break
-
-	if not items_fieldname or not child_schema:
-		return {"item_matches": [], "item_discrepancies": [], "extra_extracted": [], "extra_existing": []}
-
-	extracted_items = extracted_data.get(items_fieldname, [])
+	extracted_items = extracted_data.get(table_fieldname, [])
 	if not isinstance(extracted_items, list):
 		extracted_items = []
 
-	existing_items = doc.get(items_fieldname, [])
+	existing_items = doc.get(table_fieldname, [])
+
+	if not extracted_items and not existing_items:
+		return {}  # Nothing to compare
 
 	item_matches = []
 	item_discrepancies = []

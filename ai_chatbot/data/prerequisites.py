@@ -58,27 +58,31 @@ def detect_prerequisites(doctype: str, values: dict, company: str | None = None)
 	- Party fields (customer / supplier) against their master DocType
 	- Item codes in child table rows against the Item master
 	- UOM values in child table rows against the UOM master
+	- Account heads in child table rows against the Account master
 
 	Returns a structured dict suitable for the ConfirmationCard frontend::
 
-		{
-			"has_prerequisites": True/False,
-			"missing_parties": [ ... ],
-			"missing_items":   [ ... ],
-			"missing_uoms":    [ ... ],
-		}
+	        {
+	            "has_prerequisites": True / False,
+	            "missing_parties": [...],
+	            "missing_items": [...],
+	            "missing_uoms": [...],
+	            "missing_accounts": [...],
+	        }
 	"""
 	company = company or frappe.defaults.get_user_default("Company")
 	missing_parties = _detect_missing_parties(doctype, values, company)
 	missing_items, missing_uoms = _detect_missing_items(doctype, values, company)
+	missing_accounts = _detect_missing_accounts(doctype, values, company)
 
-	has_prereqs = bool(missing_parties or missing_items or missing_uoms)
+	has_prereqs = bool(missing_parties or missing_items or missing_uoms or missing_accounts)
 
 	return {
 		"has_prerequisites": has_prereqs,
 		"missing_parties": missing_parties,
 		"missing_items": missing_items,
 		"missing_uoms": missing_uoms,
+		"missing_accounts": missing_accounts,
 	}
 
 
@@ -92,21 +96,28 @@ def execute_prerequisites(prerequisites: dict, company: str | None = None) -> di
 
 	Returns::
 
-		{
-			"success": True/False,
-			"created": ["Customer: Acme Corp", "Item: Widget A", ...],
-			"errors":  [],
-			"name_map": {
-				"customer": {"Acme Corp": "Acme Corp"},
-				"item_code": {"Widget A": "ITEM-00001"},
-			}
-		}
+	        {
+	            "success": True / False,
+	            "created": ["Customer: Acme Corp", "Item: Widget A", ...],
+	            "errors": [],
+	            "name_map": {
+	                "customer": {"Acme Corp": "Acme Corp"},
+	                "item_code": {"Widget A": "ITEM-00001"},
+	            },
+	        }
 	"""
 	company = company or frappe.defaults.get_user_default("Company")
 	created: list[str] = []
 	name_map: dict[str, dict[str, str]] = {}
 
 	try:
+		# Phase 0 — Accounts (tax/GL accounts in taxes child table)
+		for account in prerequisites.get("missing_accounts", []):
+			overrides = account.get("user_overrides", {})
+			result_name = _create_account(account["value"], overrides, company)
+			created.append(f"Account: {result_name}")
+			name_map.setdefault(account["field"], {})[account["value"]] = result_name
+
 		# Phase 1 — UOMs (Items reference stock_uom)
 		for uom in prerequisites.get("missing_uoms", []):
 			result_name = _create_uom(uom["value"])
@@ -115,9 +126,7 @@ def execute_prerequisites(prerequisites: dict, company: str | None = None) -> di
 		# Phase 2 — Parties (no dependency on items)
 		for party in prerequisites.get("missing_parties", []):
 			overrides = party.get("user_overrides", {})
-			result_name = _create_party(
-				party["doctype"], party["value"], overrides, company
-			)
+			result_name = _create_party(party["doctype"], party["value"], overrides, company)
 			created.append(f"{party['doctype']}: {result_name}")
 			name_map.setdefault(party["field"], {})[party["value"]] = result_name
 
@@ -138,6 +147,10 @@ def execute_prerequisites(prerequisites: dict, company: str | None = None) -> di
 
 	except Exception as e:
 		frappe.db.rollback()
+		frappe.log_error(
+			title="Prerequisite Creation Failed",
+			message=f"Company: {company}\nCreated so far: {created}\nError: {cstr(e)}\n\n{frappe.get_traceback()}",
+		)
 		return {
 			"success": False,
 			"created": [],
@@ -151,9 +164,7 @@ def execute_prerequisites(prerequisites: dict, company: str | None = None) -> di
 # ---------------------------------------------------------------------------
 
 
-def _detect_missing_parties(
-	doctype: str, values: dict, company: str
-) -> list[dict]:
+def _detect_missing_parties(doctype: str, values: dict, company: str) -> list[dict]:
 	"""Find party fields whose value does not exist as a master record."""
 	missing = []
 
@@ -174,19 +185,19 @@ def _detect_missing_parties(
 
 		# Truly missing — build editable fields for the card
 		editable = _get_party_editable_fields(party_doctype, company)
-		missing.append({
-			"doctype": party_doctype,
-			"field": field,
-			"value": value,
-			"editable_fields": editable,
-		})
+		missing.append(
+			{
+				"doctype": party_doctype,
+				"field": field,
+				"value": value,
+				"editable_fields": editable,
+			}
+		)
 
 	return missing
 
 
-def _detect_missing_items(
-	doctype: str, values: dict, company: str
-) -> tuple[list[dict], list[dict]]:
+def _detect_missing_items(doctype: str, values: dict, company: str) -> tuple[list[dict], list[dict]]:
 	"""Find item_code / uom values in child tables that don't exist.
 
 	Returns (missing_items, missing_uoms).
@@ -209,14 +220,10 @@ def _detect_missing_items(
 
 		# Check which child fields are Link→Item and Link→UOM
 		item_fields = [
-			cdf.fieldname
-			for cdf in child_meta.fields
-			if cdf.fieldtype == "Link" and cdf.options == "Item"
+			cdf.fieldname for cdf in child_meta.fields if cdf.fieldtype == "Link" and cdf.options == "Item"
 		]
 		uom_fields = [
-			cdf.fieldname
-			for cdf in child_meta.fields
-			if cdf.fieldtype == "Link" and cdf.options == "UOM"
+			cdf.fieldname for cdf in child_meta.fields if cdf.fieldtype == "Link" and cdf.options == "UOM"
 		]
 
 		for row_idx, row in enumerate(rows):
@@ -247,13 +254,15 @@ def _detect_missing_items(
 						break
 
 				editable = _get_item_editable_fields(val, row_uom, company)
-				missing_items.append({
-					"doctype": "Item",
-					"value": val,
-					"row_indices": [row_idx],
-					"child_table_field": df.fieldname,
-					"editable_fields": editable,
-				})
+				missing_items.append(
+					{
+						"doctype": "Item",
+						"value": val,
+						"row_indices": [row_idx],
+						"child_table_field": df.fieldname,
+						"editable_fields": editable,
+					}
+				)
 
 			# --- UOMs ---
 			for ufield in uom_fields:
@@ -263,16 +272,75 @@ def _detect_missing_items(
 				if frappe.db.exists("UOM", val):
 					continue
 				seen_uoms.add(val)
-				missing_uoms.append({
-					"doctype": "UOM",
-					"value": val,
-				})
+				missing_uoms.append(
+					{
+						"doctype": "UOM",
+						"value": val,
+					}
+				)
 
 	# Also check for items referenced in the same row with a
 	# duplicate value (append row_indices)
 	_deduplicate_items(missing_items)
 
 	return missing_items, missing_uoms
+
+
+def _detect_missing_accounts(doctype: str, values: dict, company: str) -> list[dict]:
+	"""Find Account link values in child tables that don't exist.
+
+	Scans child tables (especially taxes/charges) for Link→Account fields
+	whose value doesn't match any existing Account record.
+	"""
+	meta = frappe.get_meta(doctype)
+	missing: list[dict] = []
+	seen: set[str] = set()
+
+	for df in meta.fields:
+		if df.fieldtype != "Table" or df.fieldname not in values:
+			continue
+
+		rows = values[df.fieldname]
+		if not isinstance(rows, list):
+			continue
+
+		child_meta = frappe.get_meta(df.options)
+
+		account_fields = [
+			cdf.fieldname for cdf in child_meta.fields if cdf.fieldtype == "Link" and cdf.options == "Account"
+		]
+
+		for row in rows:
+			if not isinstance(row, dict):
+				continue
+
+			for afield in account_fields:
+				val = row.get(afield)
+				if not val or val in seen:
+					continue
+
+				if frappe.db.exists("Account", val):
+					continue
+
+				# Try fuzzy resolution
+				resolved = _resolve_link_value("Account", afield, val)
+				if resolved:
+					row[afield] = resolved
+					continue
+
+				seen.add(val)
+				editable = _get_account_editable_fields(val, company)
+				missing.append(
+					{
+						"doctype": "Account",
+						"field": afield,
+						"value": val,
+						"child_table_field": df.fieldname,
+						"editable_fields": editable,
+					}
+				)
+
+	return missing
 
 
 def _deduplicate_items(missing_items: list[dict]) -> None:
@@ -303,13 +371,9 @@ def _get_party_editable_fields(party_doctype: str, company: str) -> list[dict]:
 
 	if party_doctype == "Customer":
 		default_group = (
-			frappe.db.get_single_value("Selling Settings", "customer_group")
-			or "All Customer Groups"
+			frappe.db.get_single_value("Selling Settings", "customer_group") or "All Customer Groups"
 		)
-		default_territory = (
-			frappe.db.get_single_value("Selling Settings", "territory")
-			or "All Territories"
-		)
+		default_territory = frappe.db.get_single_value("Selling Settings", "territory") or "All Territories"
 		return [
 			{
 				"fieldname": "customer_group",
@@ -333,8 +397,7 @@ def _get_party_editable_fields(party_doctype: str, company: str) -> list[dict]:
 
 	if party_doctype == "Supplier":
 		default_group = (
-			frappe.db.get_single_value("Buying Settings", "supplier_group")
-			or "All Supplier Groups"
+			frappe.db.get_single_value("Buying Settings", "supplier_group") or "All Supplier Groups"
 		)
 		return [
 			{
@@ -354,14 +417,9 @@ def _get_party_editable_fields(party_doctype: str, company: str) -> list[dict]:
 	return []
 
 
-def _get_item_editable_fields(
-	item_value: str, row_uom: str | None, company: str
-) -> list[dict]:
+def _get_item_editable_fields(item_value: str, row_uom: str | None, company: str) -> list[dict]:
 	"""Return editable field definitions for a missing item."""
-	default_group = (
-		frappe.db.get_single_value("Stock Settings", "item_group")
-		or "Products"
-	)
+	default_group = frappe.db.get_single_value("Stock Settings", "item_group") or "Products"
 	default_uom = row_uom or "Nos"
 
 	return [
@@ -393,14 +451,75 @@ def _get_item_editable_fields(
 	]
 
 
+def _get_account_editable_fields(account_value: str, company: str) -> list[dict]:
+	"""Return editable field definitions for a missing Account.
+
+	Attempts to infer sensible defaults:
+	- account_name: the core name extracted from the value
+	- parent_account: "Duties and Taxes - ABBR" for tax-like names, else
+	  "Expenses - ABBR" as a generic default
+	- account_type: "Tax" if the name suggests a tax, otherwise empty
+	"""
+	abbr = ""
+	if company:
+		abbr = frappe.get_cached_value("Company", company, "abbr") or ""
+
+	# Strip company abbreviation if present
+	core_name = account_value.rsplit(" - ", 1)[0].strip() if " - " in account_value else account_value.strip()
+
+	# Infer if this is a tax account
+	tax_keywords = {"tax", "gst", "igst", "sgst", "cgst", "vat", "cess", "tds", "tcs", "duty", "excise"}
+	is_tax = bool(tax_keywords & set(core_name.lower().split()))
+
+	# Try to find a suitable parent account
+	default_parent = ""
+	if is_tax and abbr:
+		# Look for "Duties and Taxes" parent
+		candidate = frappe.db.get_value(
+			"Account",
+			{"account_name": "Duties and Taxes", "company": company, "is_group": 1},
+			"name",
+		)
+		if candidate:
+			default_parent = candidate
+	if not default_parent and abbr:
+		# Fallback: "Indirect Expenses" or first Expense group
+		candidate = frappe.db.get_value(
+			"Account",
+			{"account_name": "Indirect Expenses", "company": company, "is_group": 1},
+			"name",
+		)
+		if candidate:
+			default_parent = candidate
+
+	return [
+		{
+			"fieldname": "account_name",
+			"label": "Account Name",
+			"fieldtype": "Data",
+			"default": core_name,
+		},
+		{
+			"fieldname": "parent_account",
+			"label": "Parent Account",
+			"fieldtype": "Data",
+			"default": default_parent,
+		},
+		{
+			"fieldname": "account_type",
+			"label": "Account Type",
+			"fieldtype": "Data",
+			"default": "Tax" if is_tax else "",
+		},
+	]
+
+
 # ---------------------------------------------------------------------------
 # Creation helpers
 # ---------------------------------------------------------------------------
 
 
-def _create_party(
-	party_doctype: str, value: str, overrides: dict, company: str
-) -> str:
+def _create_party(party_doctype: str, value: str, overrides: dict, company: str) -> str:
 	"""Create a Customer or Supplier master record.
 
 	Returns the created document's ``name``.
@@ -477,3 +596,103 @@ def _create_uom(uom_name: str) -> str:
 	doc.uom_name = uom_name
 	doc.insert(ignore_permissions=False)
 	return doc.name
+
+
+def _create_account(account_value: str, overrides: dict, company: str) -> str:
+	"""Create an Account master record.
+
+	ERPNext Account ``name`` is auto-generated as ``account_name - ABBR``.
+
+	Multi-company hierarchy handling:
+	If the target company is a child in a company hierarchy, ERPNext requires
+	the account to exist in the root company first.  We detect this and create
+	the account in the root company — ERPNext auto-syncs it to all children.
+
+	Args:
+		account_value: The original value from the extracted data.
+		overrides: User-edited fields (account_name, parent_account, account_type).
+		company: Company for the account.
+
+	Returns:
+		The created Account's ``name`` (e.g., "IGST - TT").
+	"""
+	account_name = overrides.get("account_name") or account_value
+	# Strip abbreviation suffix if the user left it in
+	if " - " in account_name:
+		account_name = account_name.rsplit(" - ", 1)[0].strip()
+
+	parent_account = overrides.get("parent_account", "")
+	account_type = overrides.get("account_type", "")
+
+	# --- Multi-company hierarchy detection ---
+	# If the target company is a child, create the account in the root company
+	# first.  ERPNext will auto-sync it to all descendants.
+	root_company = _get_root_company(company)
+	creation_company = root_company or company
+
+	# Resolve parent_account for the creation company.  The user-provided
+	# parent_account has the *target* company's abbreviation (e.g.,
+	# "Duties and Taxes - TTD").  If we're creating in the root company
+	# instead, we need the root-company equivalent.
+	if root_company and parent_account:
+		parent_account = _find_parent_account_in_company(parent_account, root_company) or parent_account
+
+	# Determine root_type from the parent account if possible
+	root_type = ""
+	if parent_account:
+		root_type = frappe.get_cached_value("Account", parent_account, "root_type") or ""
+
+	doc = frappe.new_doc("Account")
+	doc.account_name = account_name
+	doc.company = creation_company
+	doc.parent_account = parent_account
+	doc.account_type = account_type
+	doc.root_type = root_type
+	doc.is_group = 0
+	doc.insert(ignore_permissions=False)
+
+	# If created in the root company, return the auto-synced account
+	# name in the target (child) company.
+	if root_company:
+		child_abbr = frappe.get_cached_value("Company", company, "abbr") or ""
+		child_account_name = f"{account_name} - {child_abbr}" if child_abbr else account_name
+		# Wait for the auto-sync: check if the account now exists in the child
+		if frappe.db.exists("Account", child_account_name):
+			return child_account_name
+		# Fallback: return the root account name (the child may need a manual sync)
+		return doc.name
+
+	return doc.name
+
+
+def _get_root_company(company: str) -> str | None:
+	"""Return the root (topmost) company if *company* is a child, else None."""
+	from frappe.utils.nestedset import get_ancestors_of
+
+	try:
+		ancestors = get_ancestors_of("Company", company, "lft asc")
+		return ancestors[0] if ancestors else None
+	except Exception:
+		return None
+
+
+def _find_parent_account_in_company(parent_account: str, target_company: str) -> str | None:
+	"""Find the equivalent of *parent_account* in *target_company*.
+
+	``parent_account`` is typically like "Duties and Taxes - TTD" (child company).
+	We need the same account_name in the target (root) company.
+	"""
+	# Extract account_name from the parent_account identifier
+	parent_name = frappe.get_cached_value("Account", parent_account, "account_name")
+	if not parent_name:
+		# parent_account might already be just a name without abbreviation
+		parent_name = (
+			parent_account.rsplit(" - ", 1)[0].strip() if " - " in parent_account else parent_account
+		)
+
+	# Look for the same account_name in the target company
+	return frappe.db.get_value(
+		"Account",
+		{"account_name": parent_name, "company": target_company, "is_group": 1},
+		"name",
+	)

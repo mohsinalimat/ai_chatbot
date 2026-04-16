@@ -122,6 +122,7 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 	try:
 		# Set conversation context for session tools
 		frappe.flags.current_conversation_id = conversation_id
+
 		log_info("Streaming job started", conversation_id=conversation_id, provider=ai_provider)
 
 		# Notify frontend: stream started
@@ -254,15 +255,26 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 		# Guard: if content is empty, provide a fallback message
 		if not full_content.strip():
 			if tool_calls_data:
-				log_error(
-					f"Empty content after tool execution. Provider={ai_provider}, "
-					f"tools={[tc.get('name') for tc in tool_calls_data]}",
-					title="Streaming Empty After Tools",
+				# Check if any tool returned a confirmation card — if so, the
+				# card itself IS the response; a missing text summary is harmless.
+				has_confirmation = any(
+					isinstance(tr, dict) and tr.get("confirmation_required") for tr in tool_results_data
 				)
-				full_content = (
-					"I processed your request and executed the required tools, but was "
-					"unable to generate a summary. Please try rephrasing your question."
-				)
+				if has_confirmation:
+					full_content = (
+						"A confirmation card has been generated for your review. "
+						"Please check the details and click Save Draft or Submit to proceed."
+					)
+				else:
+					log_error(
+						f"Empty content after tool execution. Provider={ai_provider}, "
+						f"tools={[tc.get('name') for tc in tool_calls_data]}",
+						title="Streaming Empty After Tools",
+					)
+					full_content = (
+						"I processed your request and executed the required tools, but was "
+						"unable to generate a summary. Please try rephrasing your question."
+					)
 			else:
 				log_error(
 					f"Empty stream response. Provider={ai_provider}, model={provider.model}, "
@@ -630,9 +642,27 @@ def _stream_with_tools(
 				}
 			)
 
-		_publish_process_step(conversation_id, stream_id, "Processing results...", user)
-
-		# Continue streaming with tool results in history
+			# Check if the tool signaled to stop processing (e.g., file not found)
+			if isinstance(result, dict) and result.get("stop_processing"):
+				full_content = result.get("error", "An error occurred. Please check and try again.")
+				# Publish error as final content
+				_publish(
+					"ai_chat_token",
+					{
+						"conversation_id": conversation_id,
+						"stream_id": stream_id,
+						"token": full_content,
+					},
+					user=user,
+				)
+				# Break out of both loops
+				break
+		else:
+			_publish_process_step(conversation_id, stream_id, "Processing results...", user)
+			# Continue to next round
+			continue
+		# Inner for-loop was broken — break the outer round loop too
+		break
 	else:
 		# Max tool rounds reached — log and notify user
 		from ai_chatbot.core.logger import log_warning

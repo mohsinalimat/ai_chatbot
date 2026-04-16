@@ -184,6 +184,34 @@
             </div>
           </div>
         </div>
+
+        <!-- Missing Accounts -->
+        <div
+          v-for="account in (prerequisites.missing_accounts || [])"
+          :key="'account-' + account.value"
+          class="p-3 rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/10"
+        >
+          <div class="flex items-center gap-2 mb-2">
+            <AlertTriangle :size="14" class="text-amber-600 dark:text-amber-400" />
+            <span class="text-sm font-medium text-amber-800 dark:text-amber-300">
+              New Account: {{ account.value }}
+            </span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div
+              v-for="field in account.editable_fields"
+              :key="field.fieldname"
+              class="flex flex-col gap-0.5"
+            >
+              <label class="text-xs text-gray-500 dark:text-gray-400">{{ field.label }}</label>
+              <input
+                v-model="prereqForm.accounts[account.value][field.fieldname]"
+                :placeholder="field.label"
+                class="px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-blue-400 outline-none"
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Warnings -->
@@ -254,11 +282,22 @@
     <!-- Actions footer -->
     <div
       v-if="state === 'pending' || state === 'processing'"
-      class="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
+      class="flex items-center gap-2 px-4 py-2.5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
     >
+      <!-- Expiry countdown (left side) -->
+      <div
+        v-if="expiresAt && state === 'pending'"
+        class="flex items-center gap-1 text-xs mr-auto"
+        :class="confirmSecondsLeft <= 120 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'"
+      >
+        <Clock :size="12" />
+        <span>Expires in {{ confirmCountdown }}</span>
+      </div>
+      <div v-else class="mr-auto"></div>
+
       <!-- Cancel button (always present) -->
       <button
-        :disabled="state === 'processing'"
+        :disabled="state === 'processing' || confirmExpired"
         class="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         @click="handleCancel"
       >
@@ -268,7 +307,7 @@
       <!-- Submittable DocType: Save Draft + Submit buttons -->
       <template v-if="isSubmittable && action === 'create'">
         <button
-          :disabled="state === 'processing' || errors.length > 0"
+          :disabled="state === 'processing' || errors.length > 0 || confirmExpired"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-700 border border-blue-300 dark:border-blue-600 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           @click="handleConfirm(false)"
         >
@@ -277,7 +316,7 @@
           Save Draft
         </button>
         <button
-          :disabled="state === 'processing' || errors.length > 0"
+          :disabled="state === 'processing' || errors.length > 0 || confirmExpired"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           @click="handleConfirm(true)"
         >
@@ -290,7 +329,7 @@
       <!-- Non-submittable DocType: single button -->
       <template v-else>
         <button
-          :disabled="state === 'processing' || errors.length > 0"
+          :disabled="state === 'processing' || errors.length > 0 || confirmExpired"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           :class="confirmButtonClass"
           @click="handleConfirm(false)"
@@ -334,7 +373,7 @@ import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import {
   FilePlus, FileEdit, FileCheck, FileX2,
   AlertTriangle, XCircle, CheckCircle2, ExternalLink,
-  Loader2, Undo2, UserPlus, Package
+  Loader2, Undo2, UserPlus, Package, Clock
 } from 'lucide-vue-next'
 import { chatAPI } from '../utils/api'
 
@@ -349,6 +388,7 @@ const props = defineProps({
   errors: { type: Array, default: () => [] },
   isSubmittable: { type: Boolean, default: false },
   prerequisites: { type: Object, default: null },
+  expiresAt: { type: String, default: null },
   // Pre-populated from persisted confirmation_state (page reload)
   initialState: { type: String, default: 'pending' },
   initialResult: { type: Object, default: null },
@@ -369,7 +409,7 @@ const undoExecuted = ref(false)
 const submitMode = ref(false)
 
 // Prerequisite form data — initialized from editable_fields[].default
-const prereqForm = reactive({ parties: {}, items: {} })
+const prereqForm = reactive({ parties: {}, items: {}, accounts: {} })
 
 function initPrerequisiteForm() {
   const p = props.prerequisites
@@ -390,6 +430,14 @@ function initPrerequisiteForm() {
     }
     prereqForm.items[item.value] = fields
   }
+
+  for (const account of (p.missing_accounts || [])) {
+    const fields = {}
+    for (const f of account.editable_fields) {
+      fields[f.fieldname] = f.default ?? ''
+    }
+    prereqForm.accounts[account.value] = fields
+  }
 }
 
 // Check if a field should be hidden based on conditional logic
@@ -398,6 +446,42 @@ function isFieldHidden(itemValue, field) {
   if (!field.hidden_when) return false
   const depField = field.hidden_when
   return !!prereqForm.items[itemValue]?.[depField]
+}
+
+// Confirmation expiry countdown (visible while pending)
+const confirmSecondsLeft = ref(0)
+let confirmExpiryInterval = null
+
+const confirmExpired = computed(() => props.expiresAt && confirmSecondsLeft.value <= 0)
+
+const confirmCountdown = computed(() => {
+  const s = confirmSecondsLeft.value
+  if (s <= 0) return '0:00'
+  const min = Math.floor(s / 60)
+  const sec = s % 60
+  return `${min}:${sec.toString().padStart(2, '0')}`
+})
+
+function startConfirmExpiryCountdown() {
+  if (!props.expiresAt) return
+  const updateCountdown = () => {
+    const now = Date.now()
+    const expires = new Date(props.expiresAt).getTime()
+    confirmSecondsLeft.value = Math.max(0, Math.floor((expires - now) / 1000))
+    if (confirmSecondsLeft.value <= 0) {
+      if (confirmExpiryInterval) {
+        clearInterval(confirmExpiryInterval)
+        confirmExpiryInterval = null
+      }
+      // Auto-transition to expired state
+      if (state.value === 'pending') {
+        state.value = 'error'
+        errorMessage.value = 'This confirmation has expired. Please ask the AI to propose the action again.'
+      }
+    }
+  }
+  updateCountdown()
+  confirmExpiryInterval = setInterval(updateCountdown, 1000)
 }
 
 // Countdown timer for undo
@@ -431,12 +515,18 @@ function startUndoCountdown() {
 
 onMounted(() => {
   initPrerequisiteForm()
+  if (state.value === 'pending' && props.expiresAt) {
+    startConfirmExpiryCountdown()
+  }
   if (state.value === 'success' && undoToken.value) {
     startUndoCountdown()
   }
 })
 
 onUnmounted(() => {
+  if (confirmExpiryInterval) {
+    clearInterval(confirmExpiryInterval)
+  }
   if (countdownInterval) {
     clearInterval(countdownInterval)
   }

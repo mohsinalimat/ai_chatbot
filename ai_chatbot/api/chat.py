@@ -410,7 +410,17 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 					}
 				)
 
-			# Continue loop — next iteration gets the final response (or more tool calls)
+				# Check if the tool signaled to stop processing (e.g., file not found)
+				if isinstance(result, dict) and result.get("stop_processing"):
+					content = result.get("error", "An error occurred. Please check and try again.")
+					# Break out of both the tool_call loop and the round loop
+					break
+
+			else:
+				# Inner for-loop completed normally — continue to next round
+				continue
+			# Inner for-loop was broken — break the outer round loop too
+			break
 
 		tool_calls = all_tool_calls
 		tokens_used = prompt_tokens + completion_tokens

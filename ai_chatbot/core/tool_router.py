@@ -134,8 +134,8 @@ def route_tools(
 	if intent.categories and intent.confidence >= CONFIDENCE_THRESHOLD:
 		categories = _expand_categories(intent.categories)
 
-		# Phase 14A: write requests always include operations tools
-		if intent.is_write_request and "operations" not in categories:
+		# Phase 14A: write requests include operations tools (if enabled)
+		if intent.is_write_request and "operations" not in categories and _is_category_enabled("operations"):
 			categories.add("operations")
 
 		# Phase 14A: ambiguous queries — include one extra adjacent category
@@ -198,17 +198,26 @@ def route_tools(
 def _expand_categories(categories: tuple[str, ...]) -> set[str]:
 	"""Expand matched categories with their adjacent categories.
 
+	Only includes categories that are enabled in Chatbot Settings —
+	disabled categories are pruned from both primary and adjacency sets
+	so the LLM never receives tools from disabled categories.
+
 	Args:
 		categories: Primary matched categories from intent classification.
 
 	Returns:
-		Expanded set including adjacency categories.
+		Expanded set including adjacency categories (enabled only).
 	"""
-	expanded: set[str] = set(categories)
+	expanded: set[str] = set()
 
 	for cat in categories:
+		if _is_category_enabled(cat):
+			expanded.add(cat)
+
+	for cat in list(expanded):
 		for adj in CATEGORY_ADJACENCY.get(cat, []):
-			expanded.add(adj)
+			if _is_category_enabled(adj):
+				expanded.add(adj)
 
 	log_debug(
 		"Category expansion",
@@ -217,6 +226,21 @@ def _expand_categories(categories: tuple[str, ...]) -> set[str]:
 	)
 
 	return expanded
+
+
+def _is_category_enabled(category: str) -> bool:
+	"""Check whether a tool category is enabled in Chatbot Settings.
+
+	Categories without a settings field (not in TOOL_CATEGORIES) are
+	treated as always enabled.
+	"""
+	from ai_chatbot.core.config import is_tool_category_enabled
+	from ai_chatbot.core.constants import TOOL_CATEGORIES
+
+	settings_field = TOOL_CATEGORIES.get(category)
+	if not settings_field:
+		return True  # Unknown category — don't block
+	return is_tool_category_enabled(settings_field)
 
 
 def _get_filtered_tools(categories: set[str]) -> list[dict]:
@@ -241,6 +265,7 @@ def _expand_categories_for_ambiguity(
 
 	In addition to the standard adjacency expansion, add all adjacent
 	categories from every matched primary category (not just top ones).
+	Only includes enabled categories.
 
 	Args:
 		primary_categories: The original matched categories from intent.
@@ -252,12 +277,14 @@ def _expand_categories_for_ambiguity(
 	expanded = set(current)
 	for cat in primary_categories:
 		for adj in CATEGORY_ADJACENCY.get(cat, []):
-			expanded.add(adj)
+			if _is_category_enabled(adj):
+				expanded.add(adj)
 	# Also expand adjacencies of adjacencies for ambiguous queries
 	second_pass = set()
 	for cat in list(expanded):
 		for adj in CATEGORY_ADJACENCY.get(cat, []):
-			second_pass.add(adj)
+			if _is_category_enabled(adj):
+				second_pass.add(adj)
 	expanded |= second_pass
 	return expanded
 

@@ -101,6 +101,7 @@
               :errors="conf.errors || []"
               :is-submittable="conf.is_submittable || false"
               :prerequisites="conf.prerequisites || null"
+              :expires-at="conf.expires_at || null"
               :initial-state="getConfirmationInitialState(conf.confirmation_id)"
               :initial-result="getConfirmationInitialResult(conf.confirmation_id)"
               :initial-undo-token="getConfirmationUndoToken(conf.confirmation_id)"
@@ -265,6 +266,16 @@ const renderedContent = computed(() => {
       // (avoids duplicate table display — the component version is more compact and elegant)
       if (hierarchicalTables.value.length > 0) {
         content = content.replace(/\n*\|[^\n]+\|\n\|[-:| ]+\|\n(\|[^\n]+\|\n?)*/g, '')
+      }
+
+      // Strip fallback confirmation text when ConfirmationCard renders the interactive card
+      // (avoids redundant text + card overlap)
+      if (confirmationData.value.length > 0) {
+        content = content
+          .replace(/A confirmation card has been generated for your review\.[^\n]*/g, '')
+          .replace(/Please check the details and click Save Draft or Submit to proceed\./g, '')
+          .replace(/I've prepared.*?(?:review|confirm|proceed)\./gi, '')
+          .trim()
       }
 
       return renderMarkdown(content)

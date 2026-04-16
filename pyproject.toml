@@ -12,6 +12,7 @@ dependencies = [
      "python-docx>=1.1",
      "weasyprint>=63.0",
 ]
+keywords = ["ai", "frappe", "erp", "chatbot", "analysis", "intelligent-document-processing", "business-intelligence"]
 
 [build-system]
 requires = ["flit_core >=3.4,<4"]
@@ -20,6 +21,10 @@ build-backend = "flit_core.buildapi"
 # These dependencies are only installed when developer mode is enabled
 [tool.bench.dev-dependencies]
 # package_name = "~=1.1.0"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=15.0.0,<17.0.0"
+
 
 [tool.ruff]
 line-length = 110
@@ -61,3 +66,9 @@ typing-modules = ["frappe.types.DF"]
 quote-style = "double"
 indent-style = "tab"
 docstring-code-format = true
+
+[project.urls]
+Homepage = "https://github.com/sanjay-kumar001/ai_chatbot"
+Documentation = "https://github.com/sanjay-kumar001/ai_chatbot/tree/main/docs"
+Repository = "https://github.com/sanjay-kumar001/ai_chatbot.git"
+"Bug Tracker" = "https://github.com/sanjay-kumar001/ai_chatbot/issues"

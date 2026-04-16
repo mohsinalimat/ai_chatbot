@@ -101,7 +101,9 @@ def confirm_action(
 			if prerequisites and prerequisites.get("has_prerequisites"):
 				overrides = {}
 				if user_overrides:
-					overrides = json.loads(user_overrides) if isinstance(user_overrides, str) else user_overrides
+					overrides = (
+						json.loads(user_overrides) if isinstance(user_overrides, str) else user_overrides
+					)
 				_merge_overrides_into_prerequisites(prerequisites, overrides)
 
 				prereq_result = execute_prerequisites(prerequisites, values.get("company"))
@@ -126,10 +128,7 @@ def confirm_action(
 					result["submitted"] = True
 				except Exception as e:
 					# Created OK but submit failed — inform user
-					result["message"] = (
-						f"{doctype} '{result['name']}' saved as Draft. "
-						f"Submit failed: {e!s}"
-					)
+					result["message"] = f"{doctype} '{result['name']}' saved as Draft. Submit failed: {e!s}"
 					result["submitted"] = False
 
 			# Undo is only available for draft documents (not submitted)
@@ -368,8 +367,9 @@ def _merge_overrides_into_prerequisites(prerequisites, overrides):
 	The *overrides* dict has the shape::
 
 		{
-			"parties": {"Samson System": {"default_currency": "USD", ...}},
-			"items":   {"Wireless Keyboard": {"is_stock_item": 1, ...}}
+			"parties":  {"Samson System": {"default_currency": "USD", ...}},
+			"items":    {"Wireless Keyboard": {"is_stock_item": 1, ...}},
+			"accounts": {"IGST - TT": {"account_name": "IGST", ...}}
 		}
 	"""
 	party_overrides = overrides.get("parties", {})
@@ -383,6 +383,12 @@ def _merge_overrides_into_prerequisites(prerequisites, overrides):
 		user_vals = item_overrides.get(item["value"])
 		if user_vals:
 			item["user_overrides"] = user_vals
+
+	account_overrides = overrides.get("accounts", {})
+	for account in prerequisites.get("missing_accounts", []):
+		user_vals = account_overrides.get(account["value"])
+		if user_vals:
+			account["user_overrides"] = user_vals
 
 
 def _apply_name_map(values, name_map):
@@ -417,12 +423,12 @@ def _update_confirmation_state(confirmation_id, state, result=None, undo_token=N
 	Supports multiple confirmations per message by storing state as a dict
 	keyed by ``confirmation_id``.  Each entry has the shape::
 
-		{
-			"state": "confirmed" | "declined" | "expired",
-			"result": { ... },
-			"undo_token": "...",
-			"undo_expires": "..."
-		}
+	        {
+	            "state": "confirmed" | "declined" | "expired",
+	            "result": {...},
+	            "undo_token": "...",
+	            "undo_expires": "...",
+	        }
 
 	Args:
 		confirmation_id: UUID string.
@@ -458,9 +464,7 @@ def _update_confirmation_state(confirmation_id, state, result=None, undo_token=N
 				# Migrate old single-confirmation format to multi-key format
 				if isinstance(parsed, dict) and "confirmation_id" in parsed:
 					old_id = parsed["confirmation_id"]
-					existing[old_id] = {
-						k: v for k, v in parsed.items() if k != "confirmation_id"
-					}
+					existing[old_id] = {k: v for k, v in parsed.items() if k != "confirmation_id"}
 				elif isinstance(parsed, dict):
 					existing = parsed
 			except (json.JSONDecodeError, TypeError):

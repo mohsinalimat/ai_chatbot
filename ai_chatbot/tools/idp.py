@@ -38,12 +38,11 @@ from ai_chatbot.tools.registry import register_tool
 		"confirmation, then call propose_create_document to show a confirmation card."
 	),
 	parameters={
-		"file_url": {
+		"file_id": {
 			"type": "string",
 			"description": (
-				"Frappe file URL of the uploaded document "
-				"(e.g., '/private/files/invoice.pdf'). Use the file_url from "
-				"the user's uploaded attachment."
+				"The file_id from the [Attached file: ...] metadata in the user's "
+				"message (e.g., 'file_1'). Copy it exactly as shown."
 			),
 		},
 		"target_doctype": {
@@ -70,7 +69,7 @@ from ai_chatbot.tools.registry import register_tool
 	},
 	doctypes=[],
 )
-def extract_document_data(file_url=None, target_doctype=None, company=None, output_language=None):
+def extract_document_data(file_id=None, target_doctype=None, company=None, output_language=None):
 	"""Extract structured data from an uploaded document.
 
 	Runs the full IDP pipeline:
@@ -80,11 +79,19 @@ def extract_document_data(file_url=None, target_doctype=None, company=None, outp
 
 	Returns extraction results for user review.
 	"""
-	if not file_url:
-		return {"error": "file_url is required — specify the uploaded file URL"}
+	if not file_id:
+		return {"error": "file_id is required — use the file_id from [Attached file: ...] metadata"}
 
 	if not target_doctype:
 		return {"error": "target_doctype is required (e.g., 'Sales Invoice', 'Purchase Invoice')"}
+
+	# Resolve file_id alias to actual file_url
+	file_url = _resolve_file_id(file_id)
+	if not file_url:
+		return {
+			"error": f"Unknown file_id: {file_id}. Use the exact file_id from the [Attached file: ...] metadata.",
+			"stop_processing": True,
+		}
 
 	company = get_default_company(company)
 	if not output_language:
@@ -163,11 +170,11 @@ def extract_document_data(file_url=None, target_doctype=None, company=None, outp
 		"This tool does NOT create any ERPNext records."
 	),
 	parameters={
-		"file_url": {
+		"file_id": {
 			"type": "string",
 			"description": (
-				"Frappe file URL of the uploaded document "
-				"(e.g., '/private/files/salary_slip.pdf')."
+				"The file_id from the [Attached file: ...] metadata in the user's "
+				"message (e.g., 'file_1'). Copy it exactly as shown."
 			),
 		},
 		"output_language": {
@@ -180,14 +187,22 @@ def extract_document_data(file_url=None, target_doctype=None, company=None, outp
 	},
 	doctypes=[],
 )
-def extract_document_raw(file_url=None, output_language=None):
+def extract_document_raw(file_id=None, output_language=None):
 	"""Extract all structured data from a document without ERPNext schema mapping.
 
 	For documents that don't match any supported ERPNext DocType.
 	Extracts header fields, tabular data, and a summary.
 	"""
+	if not file_id:
+		return {"error": "file_id is required — use the file_id from [Attached file: ...] metadata"}
+
+	# Resolve file_id alias to actual file_url
+	file_url = _resolve_file_id(file_id)
 	if not file_url:
-		return {"error": "file_url is required — specify the uploaded file URL"}
+		return {
+			"error": f"Unknown file_id: {file_id}. Use the exact file_id from the [Attached file: ...] metadata.",
+			"stop_processing": True,
+		}
 
 	if not output_language:
 		settings = frappe.get_single("Chatbot Settings")
@@ -338,9 +353,12 @@ def create_from_extracted_data(
 		"First extracts data from the document, then compares field-by-field."
 	),
 	parameters={
-		"file_url": {
+		"file_id": {
 			"type": "string",
-			"description": "Frappe file URL of the uploaded document to compare.",
+			"description": (
+				"The file_id from the [Attached file: ...] metadata in the user's "
+				"message (e.g., 'file_1'). Copy it exactly as shown."
+			),
 		},
 		"doctype": {
 			"type": "string",
@@ -357,7 +375,7 @@ def create_from_extracted_data(
 	},
 	doctypes=[],
 )
-def compare_document_with_record(file_url=None, doctype=None, docname=None, company=None):
+def compare_document_with_record(file_id=None, doctype=None, docname=None, company=None):
 	"""Compare an uploaded document against an existing ERPNext record.
 
 	Pipeline:
@@ -366,12 +384,20 @@ def compare_document_with_record(file_url=None, doctype=None, docname=None, comp
 	3. Field-by-field comparison
 	4. Return discrepancy report
 	"""
-	if not file_url:
-		return {"error": "file_url is required"}
+	if not file_id:
+		return {"error": "file_id is required — use the file_id from [Attached file: ...] metadata"}
 	if not doctype:
 		return {"error": "doctype is required"}
 	if not docname:
 		return {"error": "docname is required"}
+
+	# Resolve file_id alias to actual file_url
+	file_url = _resolve_file_id(file_id)
+	if not file_url:
+		return {
+			"error": f"Unknown file_id: {file_id}. Use the exact file_id from the [Attached file: ...] metadata.",
+			"stop_processing": True,
+		}
 
 	company = get_default_company(company)
 
@@ -393,6 +419,22 @@ def compare_document_with_record(file_url=None, doctype=None, docname=None, comp
 		"compared_with": f"{doctype}: {docname}",
 		"message": comparison.get("summary", "Comparison complete."),
 	}
+
+
+def _resolve_file_id(file_id: str) -> str | None:
+	"""Resolve a file_id alias (e.g., 'file_1') to its actual file_url.
+
+	Looks up the alias in frappe.flags.file_alias_registry, which is populated
+	by get_conversation_history() when building the LLM message history.
+
+	Args:
+		file_id: The short alias (e.g., 'file_1').
+
+	Returns:
+		The real file_url string, or None if the alias is not found.
+	"""
+	registry = getattr(frappe.flags, "file_alias_registry", None) or {}
+	return registry.get(file_id)
 
 
 def _apply_nested_resolution(data: dict, field_path: str, resolved_value: str) -> None:
@@ -618,6 +660,12 @@ def _get_display_name_field(doctype: str) -> str | None:
 
 def _get_items_from_data(data: dict) -> list[dict]:
 	"""Extract the items child table from extracted data."""
+	# Prefer the standard "items" key
+	items = data.get("items")
+	if isinstance(items, list) and items and isinstance(items[0], dict):
+		return items
+
+	# Fallback: find the first list-of-dicts (for non-standard fieldnames)
 	for _key, value in data.items():
 		if isinstance(value, list) and value and isinstance(value[0], dict):
 			return value

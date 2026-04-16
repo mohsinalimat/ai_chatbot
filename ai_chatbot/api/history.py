@@ -45,6 +45,12 @@ def get_conversation_history(conversation_id: str) -> list[dict]:
 
 	For assistant messages with tool_calls, reconstructs the full tool call/result
 	exchange so the LLM sees the correct conversation structure on subsequent turns.
+
+	File Alias System:
+		Attachments are assigned short aliases (file_1, file_2, ...) so the LLM
+		passes a simple, unforgeable identifier to IDP tools instead of a full
+		file path. The alias→URL mapping is stored in frappe.flags.file_alias_registry
+		for resolution by tool functions.
 	"""
 	messages = frappe.get_all(
 		"Chatbot Message",
@@ -52,6 +58,10 @@ def get_conversation_history(conversation_id: str) -> list[dict]:
 		fields=["role", "content", "tool_calls", "tool_results", "attachments"],
 		order_by="timestamp asc",
 	)
+
+	# Build file alias registry: short id → real file_url
+	file_alias_registry = {}
+	alias_counter = 0
 
 	history = []
 	for msg in messages:
@@ -63,6 +73,20 @@ def get_conversation_history(conversation_id: str) -> list[dict]:
 				atts = None
 
 			if atts:
+				# Assign aliases to all attachments in this message
+				for att in atts:
+					file_url = att.get("file_url", "")
+					if file_url and file_url not in file_alias_registry.values():
+						alias_counter += 1
+						att["_file_id"] = f"file_{alias_counter}"
+						file_alias_registry[f"file_{alias_counter}"] = file_url
+					elif file_url:
+						# Re-use existing alias for the same URL
+						for alias, url in file_alias_registry.items():
+							if url == file_url:
+								att["_file_id"] = alias
+								break
+
 				has_images = any(a.get("is_image") for a in atts)
 				if has_images:
 					# Image attachments: use multimodal Vision content
@@ -72,13 +96,14 @@ def get_conversation_history(conversation_id: str) -> list[dict]:
 					history.append({"role": msg.role, "content": content})
 				else:
 					# Non-image attachments (PDF, Excel, etc.): append file refs
-					# and extract inline text so the LLM sees actual document content
+					# with short alias IDs instead of full file_url paths
 					text = msg.content or ""
 					for att in atts:
 						file_url = att.get("file_url", "")
 						file_name = att.get("file_name", "unknown")
+						file_id = att.get("_file_id", "")
 						mime_type = att.get("mime_type", "")
-						text += f"\n[Attached file: {file_name} ({mime_type}), file_url: {file_url}]"
+						text += f"\n[Attached file: {file_name} ({mime_type}), file_id: {file_id}]"
 						# Inline raw text extraction so LLM sees actual content
 						inline_text = _extract_inline_text(file_url, mime_type)
 						if inline_text:
@@ -130,6 +155,9 @@ def get_conversation_history(conversation_id: str) -> list[dict]:
 
 		message_dict = {"role": msg.role, "content": msg.content}
 		history.append(message_dict)
+
+	# Store file alias registry so IDP tools can resolve file_id → file_url
+	frappe.flags.file_alias_registry = file_alias_registry
 
 	return history
 

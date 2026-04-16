@@ -372,10 +372,18 @@ def propose_cancel_document(doctype, name):
 def _store_pending_confirmation(confirmation_id, payload):
 	"""Store a pending confirmation payload in Redis with TTL.
 
+	Also stamps ``expires_at`` (ISO datetime) into the payload so the
+	frontend can display a countdown timer to the user.
+
 	Args:
 		confirmation_id: Unique UUID string.
 		payload: Dict to store (will be JSON-serialized).
 	"""
+	from frappe.utils import add_to_date, now_datetime
+
+	expires_at = add_to_date(now_datetime(), seconds=_CONFIRMATION_TTL).isoformat()
+	payload["expires_at"] = expires_at
+
 	key = f"{_CACHE_PREFIX}{confirmation_id}"
 	frappe.cache().set_value(key, json.dumps(payload, default=str), expires_in_sec=_CONFIRMATION_TTL)
 
@@ -646,6 +654,8 @@ def _collect_prerequisite_values(prerequisites):
 		values.add(p["value"])
 	for p in prerequisites.get("missing_uoms", []):
 		values.add(p["value"])
+	for p in prerequisites.get("missing_accounts", []):
+		values.add(p["value"])
 	return values
 
 
@@ -670,6 +680,8 @@ def _build_create_message(doctype, errors, prerequisites):
 			prereq_items.append(f"{p['doctype']} '{p['value']}'")
 		for p in prerequisites.get("missing_items", []):
 			prereq_items.append(f"Item '{p['value']}'")
+		for p in prerequisites.get("missing_accounts", []):
+			prereq_items.append(f"Account '{p['value']}'")
 		if prereq_items:
 			parts.append(f"Will also create: {', '.join(prereq_items)}.")
 

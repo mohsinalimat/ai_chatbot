@@ -98,7 +98,7 @@
           />
 
           <!-- Streaming Message (live tokens) -->
-          <div v-if="isStreaming && (streamingContent || agentPlan.length > 0)" class="flex justify-start">
+          <div v-if="isStreaming && (streamingContent || agentPlan.length > 0 || streamToolCalls.length > 0)" class="flex justify-start">
             <div class="max-w-[85%] lg:max-w-5xl rounded-2xl px-6 py-4 shadow-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
               <div class="text-gray-800 dark:text-gray-200">
                 <div class="flex items-start gap-3">
@@ -138,8 +138,8 @@
             </div>
           </div>
 
-          <!-- Typing indicator: shown while waiting for response (before streaming tokens or agent plan arrive) -->
-          <div v-if="isLoading && !streamingContent && agentPlan.length === 0" class="flex justify-start">
+          <!-- Typing indicator: shown while waiting for response (before streaming tokens, agent plan, or tool calls arrive) -->
+          <div v-if="isLoading && !streamingContent && agentPlan.length === 0 && streamToolCalls.length === 0" class="flex justify-start">
             <div class="bg-white dark:bg-gray-800 rounded-2xl px-6 py-4 shadow-sm border border-gray-200 dark:border-gray-700 max-w-[85%] lg:max-w-5xl">
               <TypingIndicator :process-step="processStep" />
             </div>
@@ -787,6 +787,17 @@ watch(isStreaming, async (newVal, oldVal) => {
     // Capture content before any resets — streamingContent may be cleared later
     const finalContent = streamingContent.value
     const wasVoice = lastMessageWasVoice.value
+
+    // Bridge the visual gap: push a temporary assistant message so the user
+    // doesn't see a flash of empty space while loadMessages() fetches from DB.
+    if (finalContent) {
+      messages.value.push({
+        _tempId: `temp_stream_${Date.now()}`,
+        role: 'assistant',
+        content: finalContent,
+        timestamp: new Date().toISOString(),
+      })
+    }
 
     isLoading.value = false
     await loadMessages(currentConversation.value.name)

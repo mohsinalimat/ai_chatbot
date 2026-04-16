@@ -69,7 +69,9 @@ def extract_and_map(
 	schema = get_doctype_schema(target_doctype)
 
 	# Step 3: Build LLM messages
-	messages = _build_extraction_messages(content, schema_prompt, target_doctype, company, output_language)
+	messages = _build_extraction_messages(
+		content, schema_prompt, target_doctype, company, output_language, schema
+	)
 
 	# Step 4: Call AI provider
 	settings = frappe.get_single("Chatbot Settings")
@@ -248,6 +250,7 @@ def _build_extraction_messages(
 	target_doctype: str,
 	company: str | None,
 	output_language: str = "English",
+	schema: dict | None = None,
 ) -> list[dict]:
 	"""Build the messages array for the LLM extraction call.
 
@@ -266,6 +269,11 @@ def _build_extraction_messages(
 	"""
 	system_message = _build_system_prompt(target_doctype, company, output_language)
 
+	# Build dynamic child table rules and JSON format from schema
+	child_tables = schema.get("child_tables", {}) if schema else {}
+	child_table_rules = _build_child_table_rules(child_tables)
+	json_output_format = _build_json_output_format(child_tables)
+
 	user_parts = [
 		f"Extract structured data from the following document and map it to the "
 		f"ERPNext **{target_doctype}** schema.\n\n"
@@ -281,39 +289,28 @@ def _build_extraction_messages(
 		f"5. If a currency is mentioned or can be inferred, include it in the "
 		f"`currency` field. If not found, omit it.\n"
 		f"6. Set `conversion_rate` to 1.0 unless explicitly stated otherwise.\n"
-		f"7. For child table items (line items/products/services), extract each row "
-		f"into the items array. For EVERY item row you MUST populate ALL of these fields:\n"
-		f"   - `item_code`: the product/part code or SKU. If no separate code column "
-		f"exists, use the first 100 characters of the item description text.\n"
-		f"   - `item_name`: a short product name or title (max ~140 characters).\n"
-		f"   - `description`: the COMPLETE, VERBATIM, UNTRUNCATED text from the "
-		f"Description / Item Name / Product column. This MUST be the FULL text including "
-		f"ALL part numbers, specifications, model numbers, dimensions, materials, and "
-		f"every word in the cell. NEVER truncate or summarize. The `description` field "
-		f"MUST be AT LEAST as long as `item_name` — it should be the longest of the "
-		f"three fields. If there is only one text column for the item, use the FULL text "
-		f"as `description` and derive shorter versions for `item_code` and `item_name`.\n"
-		f"   - `qty`: quantity.\n"
-		f"   - `rate`: unit price/rate.\n"
-		f"   - `amount`: line total amount.\n"
-		f"   - `uom`: unit of measure.\n"
-		f"   If the document has only ONE column for item identification (e.g., 'Description' "
-		f"or 'Item Name'), use the FULL cell text as `description`, and use the first 100 "
-		f"characters as both `item_code` and `item_name`.\n"
-		f"8. For Link fields, use the most likely matching name from ERPNext "
+		f"{child_table_rules}"
+		f"7. For Link fields, use the most likely matching name from ERPNext "
 		f"(e.g., a customer name, supplier name, or item code).\n"
-		f"9. If a field cannot be identified, set it to null — do NOT guess.\n"
-		f"10. Include any source fields you could not map in `unmapped_fields`.\n"
-		f"11. **Party identification (CRITICAL for invoices):** The company/entity "
+		f"8. If a field cannot be identified, set it to null — do NOT guess.\n"
+		f"9. Include any source fields you could not map in `unmapped_fields`.\n"
+		f"10. **Party identification (CRITICAL for invoices):** The company/entity "
 		f"shown in the document header/letterhead/logo is the **issuer** of the "
 		f"document. The entity listed under 'Customer', 'Bill To', 'Ship To', "
 		f"'Buyer', or 'M/S' is the **recipient**.\n"
-		f"   - For **Purchase Invoice**: the issuer is the `supplier`; the "
-		f"recipient is YOUR company (ignore it — ERPNext sets `company` separately).\n"
-		f"   - For **Sales Invoice**: the issuer is YOUR company (ignore it); the "
-		f"recipient is the `customer`.\n"
-		f"   - For **Purchase Order**: the recipient/addressee is the `supplier`.\n"
-		f"   - For **Quotation/Sales Order**: the recipient is the `customer`.\n\n"
+		f"   - For **Purchase Invoice**: extract the issuer's ACTUAL COMPANY NAME "
+		f"(from the letterhead/logo/header) and set it as the `supplier` field value. "
+		f"The recipient is YOUR company — ignore it (ERPNext sets `company` separately). "
+		f"Do NOT set supplier to the word 'Supplier' — use the real company name.\n"
+		f"   - For **Sales Invoice**: the issuer is YOUR company (ignore it); extract "
+		f"the recipient's ACTUAL NAME and set it as the `customer` field value.\n"
+		f"   - For **Purchase Order**: extract the recipient/addressee's ACTUAL NAME "
+		f"and set it as the `supplier` field value.\n"
+		f"   - For **Quotation/Sales Order**: extract the recipient's ACTUAL NAME "
+		f"and set it as the `customer` field value.\n"
+		f"   **IMPORTANT: The supplier/customer field must contain an actual company "
+		f"or person name extracted from the document, NEVER the literal word "
+		f"'Supplier' or 'Customer'.**\n\n"
 		f"## Content Filtering (CRITICAL)\n\n"
 		f"You MUST completely discard the following boilerplate text. It is NOT part of "
 		f"the document's terms, conditions, or any other field:\n"
@@ -354,19 +351,7 @@ def _build_extraction_messages(
 		f"- `naming_series`\n"
 		f"- `docstatus`\n\n"
 		f"## Required JSON Output Format\n\n"
-		f"```json\n"
-		f"{{\n"
-		f'  "header": {{\n'
-		f'    "field_name": "value",\n'
-		f"    ...\n"
-		f"  }},\n"
-		f'  "items": [\n'
-		f'    {{"item_code": "...", "item_name": "...", "description": "full text...", "qty": ..., "rate": ..., "amount": ..., "uom": "..."}},\n'
-		f"    ...\n"
-		f"  ],\n"
-		f'  "unmapped_fields": ["source_field_1", "source_field_2"]\n'
-		f"}}\n"
-		f"```\n\n"
+		f"```json\n{json_output_format}\n```\n\n"
 		f"Respond ONLY with the JSON object. No explanations or markdown outside the JSON."
 	]
 
@@ -402,6 +387,141 @@ def _build_extraction_messages(
 			],
 		},
 	]
+
+
+def _is_items_table(child: dict) -> bool:
+	"""Check if a child table schema represents an items/line-items table.
+
+	Detects by looking for a Link field pointing to the Item DocType.
+	"""
+	return any(
+		f.get("fieldtype") == "Link" and f.get("link_doctype") == "Item" for f in child.get("fields", [])
+	)
+
+
+def _is_tax_table(child: dict) -> bool:
+	"""Check if a child table schema represents a taxes/charges table.
+
+	Detects by looking for fields named charge_type or account_head.
+	"""
+	field_names = {f["fieldname"] for f in child.get("fields", [])}
+	return bool({"charge_type", "account_head"} & field_names)
+
+
+def _build_child_table_rules(child_tables: dict) -> str:
+	"""Build dynamic extraction rules for all child tables in the schema.
+
+	Generates items-specific rules for item tables, tax-specific rules
+	for tax/charge tables, and generic rules for any other child tables.
+
+	Returns a multi-line rule string to embed in the extraction prompt.
+	"""
+	if not child_tables:
+		return ""
+
+	parts = []
+	for table_fieldname, child in child_tables.items():
+		table_label = child.get("label", table_fieldname)
+
+		if _is_items_table(child):
+			parts.append(
+				f"- **{table_label}** (`{table_fieldname}`): Extract each line item/product/service "
+				f"into the `{table_fieldname}` array. For EVERY item row you MUST populate ALL of these fields:\n"
+				f"   - `item_code`: the product/part code or SKU. If no separate code column "
+				f"exists, use the first 100 characters of the item description text.\n"
+				f"   - `item_name`: a short product name or title (max ~140 characters).\n"
+				f"   - `description`: the COMPLETE, VERBATIM, UNTRUNCATED text from the "
+				f"Description / Item Name / Product column. This MUST be the FULL text including "
+				f"ALL part numbers, specifications, model numbers, dimensions, materials, and "
+				f"every word in the cell. NEVER truncate or summarize. The `description` field "
+				f"MUST be AT LEAST as long as `item_name` — it should be the longest of the "
+				f"three fields. If there is only one text column for the item, use the FULL text "
+				f"as `description` and derive shorter versions for `item_code` and `item_name`.\n"
+				f"   - `qty`: quantity.\n"
+				f"   - `rate`: unit price/rate.\n"
+				f"   - `amount`: line total amount.\n"
+				f"   - `uom`: unit of measure.\n"
+				f"   If the document has only ONE column for item identification (e.g., 'Description' "
+				f"or 'Item Name'), use the FULL cell text as `description`, and use the first 100 "
+				f"characters as both `item_code` and `item_name`.\n"
+			)
+		elif _is_tax_table(child):
+			parts.append(
+				f"- **{table_label}** (`{table_fieldname}`): Extract each tax, duty, or charge "
+				f"line into the `{table_fieldname}` array. For each tax row, extract:\n"
+				f'   - `charge_type`: set to `"On Net Total"` unless the document explicitly '
+				f"states a different basis (e.g., on previous row total).\n"
+				f"   - `account_head`: the tax/account name exactly as shown in the document "
+				f'(e.g., "CGST", "SGST", "IGST", "VAT", "Service Tax"). '
+				f"Include the full name — the system will resolve or create it.\n"
+				f"   - `rate`: the tax rate as a percentage number (e.g., 9 for 9%).\n"
+				f"   - `tax_amount`: the calculated tax amount.\n"
+				f"   - `description`: the tax description or label from the document.\n"
+				f"   - `included_in_print_rate`: set to 1 if the tax is included in item prices, "
+				f"otherwise 0 or omit.\n"
+				f"   If the document shows taxes (GST, VAT, duties, cess, etc.) you MUST extract "
+				f"them here — do NOT ignore tax lines.\n"
+			)
+		else:
+			# Generic child table — list key fields
+			key_fields = [
+				f"`{cf['fieldname']}` ({cf['label']})"
+				for cf in child.get("fields", [])[:8]
+				if cf.get("reqd") or cf["fieldname"] not in ("parent", "parentfield", "parenttype", "idx")
+			]
+			if key_fields:
+				fields_str = ", ".join(key_fields)
+				parts.append(
+					f"- **{table_label}** (`{table_fieldname}`): If the document contains data "
+					f"for this table, extract each row into the `{table_fieldname}` array. "
+					f"Key fields: {fields_str}.\n"
+				)
+
+	if not parts:
+		return ""
+
+	return (
+		"**Child Tables** — Extract data into the following child table arrays:\n" + "\n".join(parts) + "\n"
+	)
+
+
+def _build_json_output_format(child_tables: dict) -> str:
+	"""Build the dynamic JSON output format example for the extraction prompt.
+
+	Includes all child tables discovered from the DocType schema, with
+	appropriate example fields for each table type.
+	"""
+	parts = ['  "header": {\n    "field_name": "value",\n    ...\n  }']
+
+	for table_fieldname, child in child_tables.items():
+		if _is_items_table(child):
+			parts.append(
+				f'  "{table_fieldname}": [\n'
+				f'    {{"item_code": "...", "item_name": "...", "description": "full text...", '
+				f'"qty": ..., "rate": ..., "amount": ..., "uom": "..."}},\n'
+				f"    ...\n"
+				f"  ]"
+			)
+		elif _is_tax_table(child):
+			parts.append(
+				f'  "{table_fieldname}": [\n'
+				f'    {{"charge_type": "On Net Total", "account_head": "CGST", '
+				f'"rate": 9.0, "tax_amount": 100.0, "description": "CGST @ 9%"}},\n'
+				f"    ...\n"
+				f"  ]"
+			)
+		else:
+			# Generic: show a few key fields from the schema
+			example_fields = []
+			for cf in child.get("fields", [])[:4]:
+				example_fields.append(f'"{cf["fieldname"]}": "..."')
+			if example_fields:
+				row_example = ", ".join(example_fields)
+				parts.append(f'  "{table_fieldname}": [\n    {{{row_example}}},\n    ...\n  ]')
+
+	parts.append('  "unmapped_fields": ["source_field_1", "source_field_2"]')
+
+	return "{\n" + ",\n".join(parts) + "\n}"
 
 
 def _build_system_prompt(target_doctype: str, company: str | None, output_language: str = "English") -> str:
@@ -447,6 +567,10 @@ def _build_system_prompt(target_doctype: str, company: str | None, output_langua
 		"from the source document. It must NEVER be shorter than `item_name`. If the "
 		"document has detailed product descriptions, specifications, or notes in the "
 		"item rows, ALL of that text goes into `description`."
+		"\n5. When the document contains taxes, charges, duties, GST, VAT, or fees, "
+		"you MUST extract each tax/charge line into the taxes child table array. "
+		"Include the tax description, rate percentage, tax amount, and the account/head name. "
+		"Do NOT put tax information only in the header — it MUST go into the child table rows."
 	)
 
 	return "\n".join(parts)
@@ -540,17 +664,11 @@ def _normalize_extracted_data(extracted: dict, schema: dict) -> dict:
 	"""
 	warnings = []
 	header = extracted.get("header", {})
-	items = extracted.get("items", [])
 
-	# Build a lookup of field types from schema
+	# Build a lookup of field types from schema (header fields only)
 	field_types = {}
 	for f in schema.get("fields", []):
 		field_types[f["fieldname"]] = f["fieldtype"]
-
-	child_field_types = {}
-	for _table_name, child in schema.get("child_tables", {}).items():
-		for cf in child.get("fields", []):
-			child_field_types[cf["fieldname"]] = cf["fieldtype"]
 
 	# Normalize header fields
 	normalized_header = {}
@@ -595,56 +713,75 @@ def _normalize_extracted_data(extracted: dict, schema: dict) -> dict:
 			normalized_header[date_field] = nowdate()
 			warnings.append(f"Assumed today's date for missing '{date_field}'.")
 
-	# Normalize items
-	normalized_items = []
-	for idx, item in enumerate(items):
-		norm_item = {}
-		for key, value in item.items():
-			if value is None:
-				continue
-			ftype = child_field_types.get(key, "Data")
-			normalized_value, warning = _normalize_value(f"items[{idx}].{key}", value, ftype)
-			if warning:
-				warnings.append(warning)
-			if normalized_value is not None:
-				norm_item[key] = normalized_value
-
-		# Apply item defaults
-		if norm_item:
-			# Default qty to 1 if missing
-			if "qty" not in norm_item:
-				norm_item["qty"] = 1.0
-				warnings.append(f"items[{idx}]: Assumed qty = 1 (not found in document).")
-
-			# If item_code and item_name are both missing, derive from description
-			has_item_code = bool(norm_item.get("item_code"))
-			has_item_name = bool(norm_item.get("item_name"))
-			description = norm_item.get("description", "")
-
-			if not has_item_code and not has_item_name and description:
-				derived_name = description[:100].strip()
-				norm_item["item_code"] = derived_name
-				norm_item["item_name"] = derived_name
-				warnings.append(
-					f"items[{idx}]: Derived item_code/item_name from description (first 100 chars)."
-				)
-			elif not has_item_code and has_item_name:
-				norm_item["item_code"] = norm_item["item_name"]
-			elif has_item_code and not has_item_name:
-				norm_item["item_name"] = norm_item["item_code"]
-
-			normalized_items.append(norm_item)
-
+	# Normalize ALL child tables from schema (items, taxes, etc.)
 	result = {**normalized_header}
-	if normalized_items:
-		# Find the items table fieldname from schema
-		items_fieldname = "items"
-		for table_name in schema.get("child_tables", {}):
-			items_fieldname = table_name
-			break
-		result[items_fieldname] = normalized_items
+
+	for table_fieldname, child in schema.get("child_tables", {}).items():
+		raw_rows = extracted.get(table_fieldname, [])
+		if not isinstance(raw_rows, list) or not raw_rows:
+			continue
+
+		# Build per-table field type lookup
+		ct_field_types = {}
+		for cf in child.get("fields", []):
+			ct_field_types[cf["fieldname"]] = cf["fieldtype"]
+
+		is_item_table = _is_items_table(child)
+
+		normalized_rows = []
+		for idx, row in enumerate(raw_rows):
+			if not isinstance(row, dict):
+				continue
+			norm_row = {}
+			for key, value in row.items():
+				if value is None:
+					continue
+				ftype = ct_field_types.get(key, "Data")
+				normalized_value, warning = _normalize_value(f"{table_fieldname}[{idx}].{key}", value, ftype)
+				if warning:
+					warnings.append(warning)
+				if normalized_value is not None:
+					norm_row[key] = normalized_value
+
+			if norm_row:
+				# Apply items-specific defaults only to item tables
+				if is_item_table:
+					_apply_item_defaults(norm_row, idx, table_fieldname, warnings)
+				normalized_rows.append(norm_row)
+
+		if normalized_rows:
+			result[table_fieldname] = normalized_rows
 
 	return {"data": result, "warnings": warnings}
+
+
+def _apply_item_defaults(norm_item: dict, idx: int, table_fieldname: str, warnings: list) -> None:
+	"""Apply items-specific default values (qty, item_code, item_name).
+
+	Only called for child tables that are Item-type tables
+	(i.e., have a Link field to the Item DocType).
+	"""
+	# Default qty to 1 if missing
+	if "qty" not in norm_item:
+		norm_item["qty"] = 1.0
+		warnings.append(f"{table_fieldname}[{idx}]: Assumed qty = 1 (not found in document).")
+
+	# If item_code and item_name are both missing, derive from description
+	has_item_code = bool(norm_item.get("item_code"))
+	has_item_name = bool(norm_item.get("item_name"))
+	description = norm_item.get("description", "")
+
+	if not has_item_code and not has_item_name and description:
+		derived_name = description[:100].strip()
+		norm_item["item_code"] = derived_name
+		norm_item["item_name"] = derived_name
+		warnings.append(
+			f"{table_fieldname}[{idx}]: Derived item_code/item_name from description (first 100 chars)."
+		)
+	elif not has_item_code and has_item_name:
+		norm_item["item_code"] = norm_item["item_name"]
+	elif has_item_code and not has_item_name:
+		norm_item["item_name"] = norm_item["item_code"]
 
 
 def _normalize_value(field_path: str, value, field_type: str) -> tuple:

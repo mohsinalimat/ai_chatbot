@@ -10,7 +10,7 @@ import json
 import frappe
 
 from ai_chatbot.api.history import get_conversation_history
-from ai_chatbot.core.ai_utils import extract_response, extract_tool_info
+from ai_chatbot.core.ai_utils import extract_response, extract_tool_info, safe_json
 from ai_chatbot.core.audit import log_audit_event
 from ai_chatbot.core.logger import log_error, log_info, log_warning
 from ai_chatbot.core.prompts import build_system_prompt, inject_recall_context, inject_routing_context
@@ -383,7 +383,7 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 					history.append(
 						{
 							"role": "tool",
-							"content": json.dumps(loop_error),
+							"content": safe_json(loop_error),
 							"tool_call_id": tool_call.get("id", f"tool_{i}"),
 						}
 					)
@@ -405,7 +405,7 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 				history.append(
 					{
 						"role": "tool",
-						"content": json.dumps(result),
+						"content": safe_json(result),
 						"tool_call_id": tool_call.get("id", f"tool_{i}"),
 					}
 				)
@@ -443,8 +443,8 @@ def generate_ai_response(conversation, provider, history, tools) -> dict:
 				"content": content,
 				"timestamp": frappe.utils.now(),
 				"tokens_used": tokens_used,
-				"tool_calls": json.dumps(tool_calls) if tool_calls else None,
-				"tool_results": json.dumps(all_tool_results) if all_tool_results else None,
+				"tool_calls": safe_json(tool_calls) if tool_calls else None,
+				"tool_results": safe_json(all_tool_results) if all_tool_results else None,
 			}
 		).insert()
 

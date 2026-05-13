@@ -20,6 +20,7 @@ from ai_chatbot.core.logger import log_error, log_info, log_request, timer
 from ai_chatbot.core.prompts import build_system_prompt, inject_recall_context, inject_routing_context
 from ai_chatbot.core.token_optimizer import optimize_history
 from ai_chatbot.core.token_tracker import estimate_cost, track_token_usage
+from ai_chatbot.core.ai_utils import safe_json
 from ai_chatbot.tools.base import BaseTool, get_tools_for_message
 from ai_chatbot.utils.ai_providers import get_ai_provider
 
@@ -300,8 +301,8 @@ def _run_streaming_job(conversation_id: str, stream_id: str, ai_provider: str, u
 				"content": full_content,
 				"timestamp": frappe.utils.now(),
 				"tokens_used": tokens_used,
-				"tool_calls": _safe_json(tool_calls_data) if tool_calls_data else None,
-				"tool_results": _safe_json(tool_results_data) if tool_results_data else None,
+				"tool_calls": safe_json(tool_calls_data) if tool_calls_data else None,
+				"tool_results": safe_json(tool_results_data) if tool_results_data else None,
 			}
 		).insert()
 
@@ -527,7 +528,7 @@ def _stream_with_tools(
 				except TypeError:
 					log_error(f"Non-serializable tool args for {tc['name']}: {tc['arguments']!r}",
 						title="Streaming Tool Args")
-					args_str = _safe_json(tc["arguments"])
+					args_str = safe_json(tc["arguments"])
 
 				openai_tool_calls.append(
 					{
@@ -588,7 +589,7 @@ def _stream_with_tools(
 				history.append(
 					{
 						"role": "tool",
-						"content": _safe_json(loop_error),
+						"content": safe_json(loop_error),
 						"tool_call_id": tc["id"],
 					}
 				)
@@ -644,7 +645,7 @@ def _stream_with_tools(
 			history.append(
 				{
 					"role": "tool",
-					"content": _safe_json(result),
+					"content": safe_json(result),
 					"tool_call_id": tc["id"],
 				}
 			)
@@ -837,6 +838,3 @@ def _estimate_tokens(content: str, history: list[dict]) -> int:
 	for msg in history:
 		total_chars += len(msg.get("content") or "")
 	return total_chars // 4
-
-def _safe_json(obj) -> str:
-	return json.dumps(obj, default=str)

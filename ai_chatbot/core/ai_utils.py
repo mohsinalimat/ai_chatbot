@@ -67,3 +67,6 @@ def extract_tool_info(provider_name: str, tool_call: dict) -> tuple:
 		func_name = tool_call["name"]
 		func_args = tool_call.get("input", {})
 	return func_name, func_args
+
+def safe_json(obj) -> str:
+	return json.dumps(obj, default=str)

@@ -34,6 +34,7 @@ class ChatbotConversation(Document):
 		"""Called when document is deleted — cascade to linked records"""
 		frappe.db.delete("Chatbot Token Usage", {"conversation": self.name})
 		frappe.db.delete("Chatbot Message", {"conversation": self.name})
+		frappe.db.delete("Chatbot Audit Log", {"conversation": self.name})
 
 	def update_message_count(self):
 		"""Update the message count for this conversation"""
